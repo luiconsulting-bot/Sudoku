@@ -15,10 +15,13 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 
 - **4 livelli di difficoltà**: Facile, Medio, Difficile, Esperto.
 - **Generatore a soluzione unica**: ogni puzzle ha una e una sola soluzione.
+- **Salvataggio automatico**: chiudi il browser e riprendi esattamente da dove eri, tempo incluso.
+- **Record e statistiche** per difficoltà: miglior tempo, partite vinte/giocate e serie di vittorie.
+- **Pausa** che ferma il timer e nasconde la griglia.
 - **Modalità note** (matite) per annotare i candidati in una cella.
 - **Evidenziazione intelligente** di riga, colonna, blocco e numeri uguali.
 - **Suggerimenti** (3 per partita) e **annulla** mossa.
-- **Timer** e **contatore errori**.
+- **Timer** e **contatore errori** (massimo 3).
 - **Design responsive**, ottimizzato anche per smartphone.
 
 ## ⌨️ Scorciatoie da tastiera
@@ -30,7 +33,20 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 | `N` | Attiva/disattiva modalità note |
 | `H` | Suggerimento |
 | `Z` | Annulla ultima mossa |
+| `P` | Pausa / riprendi |
 | `↑ ↓ ← →` | Sposta la selezione |
+
+## 💾 Dati salvati
+
+Tutto resta **in locale nel browser** (`localStorage`), nessun dato lascia il dispositivo:
+
+| Chiave | Contenuto |
+|--------|-----------|
+| `sudoku.save.v1` | Partita in corso (griglia, note, errori, aiuti, tempo). Rimossa a fine partita. |
+| `sudoku.stats.v1` | Record e statistiche per difficoltà. Azzerabili dal pannello 🏆. |
+
+Se `localStorage` non è disponibile (es. navigazione privata) il gioco funziona
+comunque: salvataggio e record vengono semplicemente ignorati.
 
 ## 📁 Struttura del progetto
 
