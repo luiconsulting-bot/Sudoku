@@ -19,7 +19,14 @@ const MAX_HINTS = 3;
 const STORAGE = {
   save: 'sudoku.save.v1',
   stats: 'sudoku.stats.v1',
+  scores: 'sudoku.scores.v1',
+  name: 'sudoku.name.v1',
 };
+
+// Classifica in stile arcade: 3 iniziali, 5 posizioni per difficoltà
+const MAX_SCORES = 5;
+const NAME_LEN = 3;
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 /* ---------- Generatore di Sudoku ---------- */
 
@@ -183,6 +190,42 @@ function recordResult(difficulty, won, seconds) {
   return isRecord;
 }
 
+/* ---------- Classifica (top 5 per difficoltà) ---------- */
+
+const isValidScore = (s) =>
+  !!s && typeof s.name === 'string' && typeof s.time === 'number' && isFinite(s.time);
+
+function loadScores() {
+  const raw = readStore(STORAGE.scores, {});
+  const scores = {};
+  for (const key of Object.keys(DIFFICULTY)) {
+    const list = Array.isArray(raw && raw[key]) ? raw[key].filter(isValidScore) : [];
+    scores[key] = list.sort((a, b) => a.time - b.time).slice(0, MAX_SCORES);
+  }
+  return scores;
+}
+
+// Posizione (0-based) che il tempo occuperebbe in classifica, oppure -1 se non entra
+function scoreRank(difficulty, seconds) {
+  const list = loadScores()[difficulty];
+  let pos = list.findIndex((s) => seconds < s.time);
+  if (pos === -1) pos = list.length; // più lento di tutti: va in coda
+  return pos < MAX_SCORES ? pos : -1;
+}
+
+function saveScore(difficulty, name, seconds) {
+  const scores = loadScores();
+  scores[difficulty].push({ name, time: seconds, date: Date.now() });
+  scores[difficulty].sort((a, b) => a.time - b.time);
+  scores[difficulty] = scores[difficulty].slice(0, MAX_SCORES);
+  writeStore(STORAGE.scores, scores);
+}
+
+const loadLastName = () => {
+  const n = readStore(STORAGE.name, null);
+  return typeof n === 'string' && n.length === NAME_LEN ? n : 'AAA';
+};
+
 /* ---------- Stato del gioco ---------- */
 
 const state = {
@@ -232,10 +275,16 @@ const $modalNew = document.getElementById('modal-new');
 const $modalRecord = document.getElementById('modal-record');
 const $records = document.getElementById('records');
 const $recordsOverlay = document.getElementById('records-overlay');
-const $recordsBody = document.getElementById('records-body');
-const $recordsStreak = document.getElementById('records-streak');
+const $recordsTabs = document.getElementById('records-tabs');
+const $recordsList = document.getElementById('records-list');
+const $recordsSummary = document.getElementById('records-summary');
 const $recordsClose = document.getElementById('records-close');
 const $recordsReset = document.getElementById('records-reset');
+const $nameOverlay = document.getElementById('name-overlay');
+const $nameTitle = document.getElementById('name-title');
+const $nameSub = document.getElementById('name-sub');
+const $nameSlots = document.getElementById('name-slots');
+const $nameOk = document.getElementById('name-ok');
 
 const idx = (r, c) => r * 9 + c;
 
@@ -250,6 +299,8 @@ function newGame() {
   state.busy = true;
   stopTimer();
   $overlay.hidden = true;
+  $nameOverlay.hidden = true;
+  nameEntry.onDone = null;
   showVeil('⏳', 'Genero il puzzle…', { spin: true });
 
   setTimeout(() => {
@@ -465,6 +516,12 @@ const canPlay = () => !state.finished && !state.paused && !state.busy;
 function selectCell(r, c) {
   if (!canPlay()) return;
   state.selected = { r, c };
+  render();
+}
+
+function deselect() {
+  if (!state.selected) return;
+  state.selected = null;
   render();
 }
 
@@ -703,19 +760,34 @@ function finishGame(won) {
   state.finished = true;
   stopTimer();
   removeStore(STORAGE.save); // la partita è chiusa: niente da riprendere
-  const isRecord = recordResult(state.difficulty, won, seconds);
+  recordResult(state.difficulty, won, seconds);
   updateBestTime();
-  return { seconds, isRecord };
+  return { seconds };
 }
 
 function win() {
-  const { seconds, isRecord } = finishGame(true);
+  const { seconds } = finishGame(true);
+  const rank = scoreRank(state.difficulty, seconds);
+
+  // Se il tempo entra in classifica, prima si inseriscono le iniziali
+  if (rank >= 0) {
+    askName(state.difficulty, seconds, rank, (name) => {
+      saveScore(state.difficulty, name, seconds);
+      lastScore = { difficulty: state.difficulty, name, time: seconds };
+      showWinModal(seconds, rank);
+    });
+  } else {
+    showWinModal(seconds, -1);
+  }
+}
+
+function showWinModal(seconds, rank) {
   showModal({
-    icon: isRecord ? '🏆' : '🎉',
+    icon: rank === 0 ? '🏆' : '🎉',
     title: 'Complimenti!',
     message: 'Hai completato il Sudoku senza superare il limite di errori.',
     seconds,
-    isRecord,
+    rank,
   });
 }
 
@@ -726,11 +798,11 @@ function gameOver() {
     title: 'Game Over',
     message: 'Hai raggiunto il massimo di errori consentiti. Riprova!',
     seconds,
-    isRecord: false,
+    rank: -1,
   });
 }
 
-function showModal({ icon, title, message, seconds, isRecord }) {
+function showModal({ icon, title, message, seconds, rank }) {
   const best = loadStats()[state.difficulty].best;
   document.getElementById('modal-icon').textContent = icon;
   document.getElementById('modal-title').textContent = title;
@@ -738,45 +810,185 @@ function showModal({ icon, title, message, seconds, isRecord }) {
   document.getElementById('modal-time').textContent = formatTime(seconds);
   document.getElementById('modal-diff').textContent = DIFFICULTY[state.difficulty].label;
   document.getElementById('modal-best').textContent = best === null ? '—' : formatTime(best);
-  $modalRecord.hidden = !isRecord;
+
+  if (rank === 0) {
+    $modalRecord.textContent = '🏆 Nuovo record personale!';
+    $modalRecord.hidden = false;
+  } else if (rank > 0) {
+    $modalRecord.textContent = `🏅 ${rank + 1}° posto in classifica`;
+    $modalRecord.hidden = false;
+  } else {
+    $modalRecord.hidden = true;
+  }
+
   $overlay.hidden = false;
+}
+
+/* ---------- Inserimento iniziali (stile arcade) ---------- */
+
+const nameEntry = { letters: [], pos: 0, onDone: null };
+
+function askName(difficulty, seconds, rank, onDone) {
+  nameEntry.letters = loadLastName().split('');
+  nameEntry.pos = 0;
+  nameEntry.onDone = onDone;
+
+  $nameTitle.textContent = rank === 0 ? 'Nuovo record!' : 'Sei in classifica!';
+  $nameSub.textContent = `${rank + 1}° posto · ${DIFFICULTY[difficulty].label} · ${formatTime(seconds)}`;
+
+  buildSlots();
+  renderSlots();
+  $nameOverlay.hidden = false;
+}
+
+function buildSlots() {
+  $nameSlots.innerHTML = '';
+  for (let i = 0; i < NAME_LEN; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.dataset.i = i;
+    slot.innerHTML = `
+      <button class="slot__arrow" data-dir="1" aria-label="Lettera successiva">▲</button>
+      <div class="slot__letter"></div>
+      <button class="slot__arrow" data-dir="-1" aria-label="Lettera precedente">▼</button>`;
+
+    slot.querySelector('.slot__letter').addEventListener('click', () => {
+      nameEntry.pos = i;
+      renderSlots();
+    });
+    for (const arrow of slot.querySelectorAll('.slot__arrow')) {
+      arrow.addEventListener('click', () => {
+        nameEntry.pos = i;
+        cycleLetter(Number(arrow.dataset.dir));
+      });
+    }
+    $nameSlots.appendChild(slot);
+  }
+}
+
+function renderSlots() {
+  for (const slot of $nameSlots.children) {
+    const i = Number(slot.dataset.i);
+    slot.querySelector('.slot__letter').textContent = nameEntry.letters[i];
+    slot.classList.toggle('slot--active', i === nameEntry.pos);
+  }
+}
+
+function cycleLetter(dir) {
+  const cur = ALPHABET.indexOf(nameEntry.letters[nameEntry.pos]);
+  const next = (cur + dir + ALPHABET.length) % ALPHABET.length;
+  nameEntry.letters[nameEntry.pos] = ALPHABET[next];
+  renderSlots();
+}
+
+function setLetter(letter) {
+  nameEntry.letters[nameEntry.pos] = letter;
+  moveSlot(1);
+}
+
+function moveSlot(step) {
+  nameEntry.pos = Math.min(NAME_LEN - 1, Math.max(0, nameEntry.pos + step));
+  renderSlots();
+}
+
+function confirmName() {
+  const name = nameEntry.letters.join('');
+  writeStore(STORAGE.name, name); // prefill per la prossima volta
+  $nameOverlay.hidden = true;
+  const done = nameEntry.onDone;
+  nameEntry.onDone = null;
+  if (done) done(name);
+}
+
+function handleNameKey(e) {
+  if (/^[a-zA-Z]$/.test(e.key)) {
+    e.preventDefault();
+    setLetter(e.key.toUpperCase());
+    return;
+  }
+  switch (e.key) {
+    case 'ArrowUp': e.preventDefault(); cycleLetter(1); break;
+    case 'ArrowDown': e.preventDefault(); cycleLetter(-1); break;
+    case 'ArrowLeft': e.preventDefault(); moveSlot(-1); break;
+    case 'ArrowRight': e.preventDefault(); moveSlot(1); break;
+    case 'Backspace': e.preventDefault(); nameEntry.letters[nameEntry.pos] = 'A'; moveSlot(-1); break;
+    case 'Enter': e.preventDefault(); confirmName(); break;
+  }
 }
 
 /* ---------- Record e statistiche ---------- */
 
-function openRecords() {
-  const stats = loadStats();
-  $recordsBody.innerHTML = '';
+let recordsTab = 'medio';
+let lastScore = null; // punteggio appena inserito, evidenziato in classifica
 
+function openRecords() {
+  recordsTab = state.difficulty;
+  buildRecordTabs();
+  renderRecords();
+  $recordsOverlay.hidden = false;
+}
+
+function buildRecordTabs() {
+  $recordsTabs.innerHTML = '';
   for (const [key, cfg] of Object.entries(DIFFICULTY)) {
-    const s = stats[key];
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${cfg.label}</td>
-      <td class="records__best">${s.best === null ? '—' : formatTime(s.best)}</td>
-      <td>${s.won}</td>
-      <td>${s.played}</td>`;
-    $recordsBody.appendChild(tr);
+    const tab = document.createElement('button');
+    tab.className = 'tab';
+    tab.dataset.key = key;
+    tab.textContent = cfg.label;
+    tab.setAttribute('role', 'tab');
+    tab.addEventListener('click', () => { recordsTab = key; renderRecords(); });
+    $recordsTabs.appendChild(tab);
+  }
+}
+
+function renderRecords() {
+  for (const tab of $recordsTabs.children) {
+    const active = tab.dataset.key === recordsTab;
+    tab.classList.toggle('tab--active', active);
+    tab.setAttribute('aria-selected', String(active));
   }
 
-  const totals = Object.values(stats).reduce(
-    (acc, s) => ({ played: acc.played + s.played, won: acc.won + s.won }),
-    { played: 0, won: 0 }
-  );
-  const bestStreak = Math.max(...Object.values(stats).map((s) => s.bestStreak));
-  $recordsStreak.textContent = totals.played === 0
-    ? 'Nessuna partita completata: gioca la prima!'
-    : `${totals.won} vittorie su ${totals.played} partite (${Math.round((totals.won / totals.played) * 100)}%) · miglior serie: ${bestStreak}`;
+  const list = loadScores()[recordsTab];
+  $recordsList.innerHTML = '';
 
-  $recordsOverlay.hidden = false;
+  if (list.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'scores__empty';
+    empty.textContent = 'Nessun tempo registrato. Vinci una partita per entrare in classifica!';
+    $recordsList.appendChild(empty);
+  } else {
+    list.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.className = 'score' + (i === 0 ? ' score--first' : '');
+      if (lastScore && recordsTab === lastScore.difficulty &&
+          s.time === lastScore.time && s.name === lastScore.name) {
+        li.classList.add('score--new');
+      }
+      const date = s.date
+        ? new Date(s.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
+        : '';
+      li.innerHTML = `
+        <span class="score__rank">${i + 1}</span>
+        <span class="score__name">${s.name}</span>
+        <span class="score__time">${formatTime(s.time)}</span>
+        <span class="score__date">${date}</span>`;
+      $recordsList.appendChild(li);
+    });
+  }
+
+  const st = loadStats()[recordsTab];
+  $recordsSummary.textContent = st.played === 0
+    ? 'Nessuna partita completata a questo livello.'
+    : `${st.won} vittorie su ${st.played} partite (${Math.round((st.won / st.played) * 100)}%) · miglior serie: ${st.bestStreak}`;
 }
 
 function resetStats() {
   if (!confirm('Vuoi davvero azzerare record e statistiche? L’operazione non è reversibile.')) return;
   removeStore(STORAGE.stats);
+  removeStore(STORAGE.scores);
   updateBestTime();
-  openRecords();
-  showToast('Statistiche azzerate');
+  renderRecords();
+  showToast('Record e statistiche azzerati');
 }
 
 /* ---------- Toast ---------- */
@@ -796,13 +1008,18 @@ document.addEventListener('keydown', (e) => {
   const tag = e.target.tagName;
   if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+  // L'inserimento delle iniziali cattura la tastiera finché è aperto
+  if (!$nameOverlay.hidden) { handleNameKey(e); return; }
+
   // Con un overlay aperto la tastiera di gioco è disattivata
   if (!$overlay.hidden || !$recordsOverlay.hidden) {
-    if (e.key === 'Escape') { $recordsOverlay.hidden = true; }
+    if (e.key === 'Escape') $recordsOverlay.hidden = true;
     return;
   }
 
   if (e.key >= '1' && e.key <= '9') { inputNumber(Number(e.key)); return; }
+
+  if (e.key === 'Escape') { deselect(); return; }
 
   switch (e.key.toLowerCase()) {
     case 'backspace':
@@ -838,11 +1055,20 @@ $notes.addEventListener('click', toggleNotes);
 $hint.addEventListener('click', useHint);
 $pause.addEventListener('click', togglePause);
 $veilBtn.addEventListener('click', resumeGame);
-$records.addEventListener('click', openRecords);
+$records.addEventListener('click', () => openRecords());
 $recordsClose.addEventListener('click', () => { $recordsOverlay.hidden = true; });
 $recordsReset.addEventListener('click', resetStats);
 $recordsOverlay.addEventListener('click', (e) => {
   if (e.target === $recordsOverlay) $recordsOverlay.hidden = true;
+});
+$nameOk.addEventListener('click', confirmName);
+
+// Un clic fuori dalla griglia deseleziona la cella. I comandi di gioco
+// (tastierino, pulsanti, toolbar) sono esclusi: lì la selezione deve restare.
+document.addEventListener('click', (e) => {
+  if (!state.selected) return;
+  if (e.target.closest('.board, .controls, .toolbar, .overlay, .veil')) return;
+  deselect();
 });
 
 // Cambiando difficoltà si aggiorna il record mostrato (la partita in corso resta)
