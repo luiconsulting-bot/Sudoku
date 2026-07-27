@@ -16,7 +16,9 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 - **4 livelli di difficoltà**: Facile, Medio, Difficile, Esperto.
 - **Generatore a soluzione unica**: ogni puzzle ha una e una sola soluzione.
 - **Salvataggio automatico**: chiudi il browser e riprendi esattamente da dove eri, tempo incluso.
-- **Record e statistiche** per difficoltà: miglior tempo, partite vinte/giocate e serie di vittorie.
+- **Classifica in stile arcade**: quando entri nei 5 migliori tempi di un livello inserisci le tue
+  **3 iniziali**, come nei videogiochi da sala. Tabella con posizione, nome, tempo e data.
+- **Statistiche** per difficoltà: partite vinte/giocate, percentuale e miglior serie di vittorie.
 - **Pausa** che ferma il timer e nasconde la griglia.
 - **Modalità note** (matite) per annotare i candidati in una cella.
 - **Evidenziazione intelligente** di riga, colonna, blocco e numeri uguali.
@@ -35,6 +37,11 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 | `Z` | Annulla ultima mossa |
 | `P` | Pausa / riprendi |
 | `↑ ↓ ← →` | Sposta la selezione |
+| `Esc` | Deseleziona la cella |
+
+Per deselezionare una cella basta anche **cliccare fuori dalla griglia**.
+Nella schermata delle iniziali si digitano le 3 lettere, oppure si usano le frecce
+(`↑ ↓` cambiano lettera, `← →` cambiano posizione) e `Invio` per confermare.
 
 ## 💾 Dati salvati
 
@@ -43,7 +50,9 @@ Tutto resta **in locale nel browser** (`localStorage`), nessun dato lascia il di
 | Chiave | Contenuto |
 |--------|-----------|
 | `sudoku.save.v1` | Partita in corso (griglia, note, errori, aiuti, tempo). Rimossa a fine partita. |
-| `sudoku.stats.v1` | Record e statistiche per difficoltà. Azzerabili dal pannello 🏆. |
+| `sudoku.stats.v1` | Statistiche per difficoltà (giocate, vinte, serie). Azzerabili dal pannello 🏆. |
+| `sudoku.scores.v1` | Classifica: i 5 migliori tempi per difficoltà con iniziali e data. |
+| `sudoku.name.v1` | Ultime iniziali usate, per proporle già compilate la volta dopo. |
 
 Se `localStorage` non è disponibile (es. navigazione privata) il gioco funziona
 comunque: salvataggio e record vengono semplicemente ignorati.

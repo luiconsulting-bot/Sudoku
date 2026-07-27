@@ -105,20 +105,28 @@
     </div>
   </div>
 
+  <!-- Overlay inserimento iniziali (stile arcade) -->
+  <div id="name-overlay" class="overlay" hidden>
+    <div class="modal">
+      <div class="modal__icon">🏆</div>
+      <h2 id="name-title" class="modal__title">Nuovo record!</h2>
+      <p id="name-sub" class="modal__message">Inserisci le tue iniziali</p>
+      <div id="name-slots" class="slots" role="group" aria-label="Iniziali del giocatore"></div>
+      <p class="slots__hint">Digita 3 lettere oppure usa le frecce ▲ ▼ ◀ ▶</p>
+      <button id="name-ok" class="btn btn--primary btn--block">Conferma</button>
+    </div>
+  </div>
+
   <!-- Overlay record e statistiche -->
   <div id="records-overlay" class="overlay" hidden>
     <div class="modal">
       <div class="modal__icon">🏆</div>
-      <h2 class="modal__title">Record e statistiche</h2>
-      <table class="records">
-        <thead>
-          <tr><th>Difficoltà</th><th>Record</th><th>Vinte</th><th>Giocate</th></tr>
-        </thead>
-        <tbody id="records-body"></tbody>
-      </table>
-      <p id="records-streak" class="modal__message"></p>
+      <h2 class="modal__title">Classifica</h2>
+      <div id="records-tabs" class="tabs" role="tablist"></div>
+      <ol id="records-list" class="scores"></ol>
+      <p id="records-summary" class="modal__message"></p>
       <button id="records-close" class="btn btn--primary btn--block">Chiudi</button>
-      <button id="records-reset" class="btn btn--link">Azzera statistiche</button>
+      <button id="records-reset" class="btn btn--link">Azzera record e statistiche</button>
     </div>
   </div>
 
