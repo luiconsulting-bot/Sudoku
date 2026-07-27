@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sudoku</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app__header">
+      <h1 class="app__title">Sudoku</h1>
+      <p class="app__subtitle">Allena la mente, un numero alla volta</p>
+    </header>
+
+    <section class="toolbar">
+      <div class="toolbar__group">
+        <label class="field">
+          <span class="field__label">Difficoltà</span>
+          <select id="difficulty" class="select">
+            <option value="facile">Facile</option>
+            <option value="medio" selected>Medio</option>
+            <option value="difficile">Difficile</option>
+            <option value="esperto">Esperto</option>
+          </select>
+        </label>
+        <button id="new-game" class="btn btn--primary">Nuova partita</button>
+      </div>
+
+      <div class="toolbar__stats">
+        <div class="stat">
+          <span class="stat__label">Tempo</span>
+          <span id="timer" class="stat__value">00:00</span>
+        </div>
+        <div class="stat">
+          <span class="stat__label">Errori</span>
+          <span id="mistakes" class="stat__value">0<span class="stat__muted">/3</span></span>
+        </div>
+      </div>
+    </section>
+
+    <div id="board" class="board" role="grid" aria-label="Griglia Sudoku"></div>
+
+    <section class="controls">
+      <div id="numpad" class="numpad" aria-label="Tastierino numerico"></div>
+
+      <div class="actions">
+        <button id="undo" class="btn btn--ghost" title="Annulla (Z)">
+          <span class="btn__icon">↶</span><span class="btn__text">Annulla</span>
+        </button>
+        <button id="erase" class="btn btn--ghost" title="Cancella (Backspace)">
+          <span class="btn__icon">⌫</span><span class="btn__text">Cancella</span>
+        </button>
+        <button id="notes" class="btn btn--ghost" title="Modalità note (N)" aria-pressed="false">
+          <span class="btn__icon">✎</span><span class="btn__text">Note</span>
+          <span id="notes-state" class="btn__badge">OFF</span>
+        </button>
+        <button id="hint" class="btn btn--ghost" title="Suggerimento (H)">
+          <span class="btn__icon">💡</span><span class="btn__text">Aiuto</span>
+          <span id="hints-left" class="btn__badge">3</span>
+        </button>
+      </div>
+    </section>
+
+    <footer class="app__footer">
+      <p>Suggerimenti: usa i tasti <kbd>1</kbd>–<kbd>9</kbd> per inserire, <kbd>N</kbd> per le note, <kbd>H</kbd> per un aiuto.</p>
+    </footer>
+  </div>
+
+  <!-- Overlay di fine partita -->
+  <div id="overlay" class="overlay" hidden>
+    <div class="modal">
+      <div id="modal-icon" class="modal__icon">🎉</div>
+      <h2 id="modal-title" class="modal__title">Complimenti!</h2>
+      <p id="modal-message" class="modal__message"></p>
+      <div class="modal__stats">
+        <div><span class="modal__stat-label">Tempo</span><span id="modal-time" class="modal__stat-value">—</span></div>
+        <div><span class="modal__stat-label">Difficoltà</span><span id="modal-diff" class="modal__stat-value">—</span></div>
+      </div>
+      <button id="modal-new" class="btn btn--primary btn--block">Gioca ancora</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
