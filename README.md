@@ -17,7 +17,10 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 - **Generatore a soluzione unica**: ogni puzzle ha una e una sola soluzione.
 - **Salvataggio automatico**: chiudi il browser e riprendi esattamente da dove eri, tempo incluso.
 - **Classifica in stile arcade**: quando entri nei 5 migliori tempi di un livello inserisci le tue
-  **3 iniziali**, come nei videogiochi da sala. Tabella con posizione, nome, tempo e data.
+  **3 iniziali**, come nei videogiochi da sala. Ogni riga mostra posizione, nome, tempo, errori,
+  aiuti e data. A parità di tempo vince chi ha meno penalità totali (errori + aiuti); a ulteriore
+  parità è preferito chi ha fatto errori piuttosto che chiesto aiuti — gli **aiuti pesano più degli
+  errori**. Una partita senza errori né aiuti è marcata come ✨ perfetta.
 - **Statistiche** per difficoltà: partite vinte/giocate, percentuale e miglior serie di vittorie.
 - **Pausa** che ferma il timer e nasconde la griglia.
 - **Modalità note** (matite) per annotare i candidati in una cella.
