@@ -195,28 +195,58 @@ function recordResult(difficulty, won, seconds) {
 const isValidScore = (s) =>
   !!s && typeof s.name === 'string' && typeof s.time === 'number' && isFinite(s.time);
 
+// Normalizza un record: errori/aiuti mancanti (vecchi salvataggi) valgono 0
+const normalizeScore = (s) => ({
+  name: s.name,
+  time: s.time,
+  errors: Number.isFinite(s.errors) ? s.errors : 0,
+  hints: Number.isFinite(s.hints) ? s.hints : 0,
+  date: Number.isFinite(s.date) ? s.date : 0,
+});
+
+// Ordinamento della classifica (ritorna < 0 se `a` va PRIMA di `b`):
+//   1. tempo più basso;
+//   2. a parità, meno penalità totali (errori + aiuti);
+//   3. a parità, meno aiuti — cioè un errore è preferito a un aiuto;
+//   4. a parità, chi ha ottenuto il tempo prima.
+function compareScores(a, b) {
+  if (a.time !== b.time) return a.time - b.time;
+  const pa = a.errors + a.hints;
+  const pb = b.errors + b.hints;
+  if (pa !== pb) return pa - pb;
+  if (a.hints !== b.hints) return a.hints - b.hints;
+  return a.date - b.date;
+}
+
 function loadScores() {
   const raw = readStore(STORAGE.scores, {});
   const scores = {};
   for (const key of Object.keys(DIFFICULTY)) {
-    const list = Array.isArray(raw && raw[key]) ? raw[key].filter(isValidScore) : [];
-    scores[key] = list.sort((a, b) => a.time - b.time).slice(0, MAX_SCORES);
+    const list = (Array.isArray(raw && raw[key]) ? raw[key] : [])
+      .filter(isValidScore)
+      .map(normalizeScore);
+    scores[key] = list.sort(compareScores).slice(0, MAX_SCORES);
   }
   return scores;
 }
 
-// Posizione (0-based) che il tempo occuperebbe in classifica, oppure -1 se non entra
-function scoreRank(difficulty, seconds) {
+// Posizione (0-based) che il risultato occuperebbe in classifica, oppure -1 se non entra
+function scoreRank(difficulty, seconds, errors, hints) {
+  const cand = { time: seconds, errors, hints, date: Date.now() };
   const list = loadScores()[difficulty];
-  let pos = list.findIndex((s) => seconds < s.time);
-  if (pos === -1) pos = list.length; // più lento di tutti: va in coda
+  let pos = 0;
+  // la lista è già ordinata: i record migliori o pari fanno scendere il candidato
+  for (const s of list) {
+    if (compareScores(s, cand) <= 0) pos++;
+    else break;
+  }
   return pos < MAX_SCORES ? pos : -1;
 }
 
-function saveScore(difficulty, name, seconds) {
+function saveScore(difficulty, name, seconds, errors, hints) {
   const scores = loadScores();
-  scores[difficulty].push({ name, time: seconds, date: Date.now() });
-  scores[difficulty].sort((a, b) => a.time - b.time);
+  scores[difficulty].push({ name, time: seconds, errors, hints, date: Date.now() });
+  scores[difficulty].sort(compareScores);
   scores[difficulty] = scores[difficulty].slice(0, MAX_SCORES);
   writeStore(STORAGE.scores, scores);
 }
@@ -766,14 +796,17 @@ function finishGame(won) {
 }
 
 function win() {
+  // errori e aiuti usati nella partita (catturati prima che finishGame resetti nulla)
+  const errors = state.mistakes;
+  const hints = MAX_HINTS - state.hintsLeft;
   const { seconds } = finishGame(true);
-  const rank = scoreRank(state.difficulty, seconds);
+  const rank = scoreRank(state.difficulty, seconds, errors, hints);
 
-  // Se il tempo entra in classifica, prima si inseriscono le iniziali
+  // Se il risultato entra in classifica, prima si inseriscono le iniziali
   if (rank >= 0) {
-    askName(state.difficulty, seconds, rank, (name) => {
-      saveScore(state.difficulty, name, seconds);
-      lastScore = { difficulty: state.difficulty, name, time: seconds };
+    askName(state.difficulty, seconds, rank, errors, hints, (name) => {
+      saveScore(state.difficulty, name, seconds, errors, hints);
+      lastScore = { difficulty: state.difficulty, name, time: seconds, errors, hints };
       showWinModal(seconds, rank);
     });
   } else {
@@ -828,17 +861,24 @@ function showModal({ icon, title, message, seconds, rank }) {
 
 const nameEntry = { letters: [], pos: 0, onDone: null };
 
-function askName(difficulty, seconds, rank, onDone) {
+function askName(difficulty, seconds, rank, errors, hints, onDone) {
   nameEntry.letters = loadLastName().split('');
   nameEntry.pos = 0;
   nameEntry.onDone = onDone;
 
   $nameTitle.textContent = rank === 0 ? 'Nuovo record!' : 'Sei in classifica!';
-  $nameSub.textContent = `${rank + 1}° posto · ${DIFFICULTY[difficulty].label} · ${formatTime(seconds)}`;
+  $nameSub.textContent =
+    `${rank + 1}° posto · ${DIFFICULTY[difficulty].label} · ${formatTime(seconds)} · ${penaltyLabel(errors, hints)}`;
 
   buildSlots();
   renderSlots();
   $nameOverlay.hidden = false;
+}
+
+// Etichetta compatta per errori e aiuti (o "senza sbavature" se zero di entrambi)
+function penaltyLabel(errors, hints) {
+  if (errors === 0 && hints === 0) return '✨ perfetto';
+  return `❌ ${errors} · 💡 ${hints}`;
 }
 
 function buildSlots() {
@@ -967,19 +1007,28 @@ function renderRecords() {
       const date = s.date
         ? new Date(s.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
         : '';
+      const perfect = s.errors === 0 && s.hints === 0;
+      const pen = perfect
+        ? '<span class="score__perfect" title="Nessun errore né aiuto">✨</span>'
+        : `<span class="score__pen" title="${s.errors} errori · ${s.hints} aiuti">❌${s.errors} 💡${s.hints}</span>`;
       li.innerHTML = `
         <span class="score__rank">${i + 1}</span>
         <span class="score__name">${s.name}</span>
         <span class="score__time">${formatTime(s.time)}</span>
+        ${pen}
         <span class="score__date">${date}</span>`;
       $recordsList.appendChild(li);
     });
   }
 
   const st = loadStats()[recordsTab];
-  $recordsSummary.textContent = st.played === 0
+  const stats = st.played === 0
     ? 'Nessuna partita completata a questo livello.'
     : `${st.won} vittorie su ${st.played} partite (${Math.round((st.won / st.played) * 100)}%) · miglior serie: ${st.bestStreak}`;
+  const legend = list.length > 0
+    ? ' — a parità di tempo conta chi ha meno ❌ e 💡 (gli aiuti pesano più degli errori).'
+    : '';
+  $recordsSummary.textContent = stats + legend;
 }
 
 function resetStats() {
