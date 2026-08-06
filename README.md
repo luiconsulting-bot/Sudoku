@@ -27,7 +27,59 @@ Apri `index.html` in un browser (doppio click) oppure visita la versione pubblic
 - **Evidenziazione intelligente** di riga, colonna, blocco e numeri uguali.
 - **Suggerimenti** (3 per partita) e **annulla** mossa.
 - **Timer** e **contatore errori** (massimo 3).
+- **Duello in due** su dispositivi diversi: stesso puzzle, vince chi finisce primo.
 - **Design responsive**, ottimizzato anche per smartphone.
+
+## 👥 Gioca in due
+
+Premi **👥** nella barra in alto. Il duello si gioca su **due dispositivi diversi**
+(due PC, due telefoni, PC + telefono): stesso puzzle, due griglie separate,
+**vince chi completa per primo**.
+
+Il collegamento è **diretto tra i due browser** (WebRTC): non c'è alcun server, e
+nessun dato passa da terzi. In cambio, l'invito va scambiato una volta a mano:
+
+1. Chi crea la partita preme **Crea una partita** e manda il **link** con
+   «Condividi» (WhatsApp, Telegram, quello che vuoi).
+2. Chi lo riceve apre il link, preme **Genera risposta** e **rimanda il codice**.
+3. Il primo lo incolla, preme **Collega** e parte il countdown.
+
+Lo scambio si paga **una volta per sessione**: la **rivincita** riusa lo stesso
+collegamento, senza ricominciare da capo.
+
+### Regole del duello
+
+| Aspetto | Regola |
+|---|---|
+| Puzzle | identico per entrambi |
+| Errori | 3 a testa: al terzo hai perso e vince l'altro |
+| Aiuti | 3 a testa, indipendenti |
+| Tempo | ognuno ha il proprio cronometro, dal via |
+| Pausa | disattivata (fermerebbe solo il tuo tempo) |
+| Note | private, non vengono trasmesse |
+
+Dell'avversario vedi una **griglia ombra** — quali celle ha riempito, **non quali
+cifre** — più tempo, celle completate, errori e aiuti. Se la connessione cade puoi
+scegliere tra **vittoria a tavolino** e **finire il puzzle da solo**: una rete
+caduta non ti costa la partita.
+
+### 🎯 Sfida con un codice (senza collegamento)
+
+Se il collegamento diretto non riesce — succede su alcune reti mobili o aziendali,
+perché non usiamo server intermedi — resta la via che **funziona sempre**: in
+**👥 → Sfida con un codice** trovi il codice della tua partita, per esempio
+`MEDIO-7F3A2B`. Mandalo a chi vuoi: aprendolo giocherà **lo stesso puzzle**, quando
+gli fa comodo, e poi vi confrontate i tempi. Nessuna connessione, nessuna attesa.
+
+> Prima di avere due dispositivi sotto mano puoi provare tutto con **«Prova su due
+> schede di questo browser»**: apri il gioco in una seconda scheda, premi «Crea»
+> in una e «Unisciti» nell'altra, senza codici da scambiare. Le due schede
+> condividono gli stessi dati salvati, quindi i duelli di prova **non vengono
+> registrati** nelle statistiche: la stessa partita non può essere insieme una
+> vittoria e una sconfitta.
+
+I risultati dei duelli **non entrano nella classifica del single player**: hanno una
+riga a parte nel pannello 🏆.
 
 ## ⌨️ Scorciatoie da tastiera
 
@@ -56,6 +108,11 @@ Tutto resta **in locale nel browser** (`localStorage`), nessun dato lascia il di
 | `sudoku.stats.v1` | Statistiche per difficoltà (giocate, vinte, serie). Azzerabili dal pannello 🏆. |
 | `sudoku.scores.v1` | Classifica: i 5 migliori tempi per difficoltà con iniziali e data. |
 | `sudoku.name.v1` | Ultime iniziali usate, per proporle già compilate la volta dopo. |
+| `sudoku.duel.stats.v1` | Duelli per difficoltà (giocati, vinti, miglior tempo, serie). |
+
+Un duello **non** viene salvato: ricaricando la pagina il collegamento con
+l'avversario è perduto e non si può riaprire senza rifare lo scambio dei codici.
+La partita in solitaria, invece, resta intatta: un duello non la sovrascrive.
 
 Se `localStorage` non è disponibile (es. navigazione privata) il gioco funziona
 comunque: salvataggio e record vengono semplicemente ignorati.
@@ -66,8 +123,15 @@ comunque: salvataggio e record vengono semplicemente ignorati.
 Sudoku/
 ├── index.html   # struttura della pagina
 ├── style.css    # stile e layout responsive
-└── script.js    # motore di gioco (generatore, stato, interazione)
+├── net.js       # trasporto: WebRTC e codici di collegamento (nessun DOM)
+├── script.js    # motore di gioco (generatore, stato, interazione)
+└── duo.js       # duello in due: protocollo, regole, interfaccia
 ```
+
+Il puzzle è generato da un **seed**: a parità di seed la griglia è identica su
+qualunque browser, ed è ciò che permette a due dispositivi di giocare lo stesso
+Sudoku scambiandosi solo un numero. Il progetto della modalità in due, con le
+scelte e i limiti dichiarati, è in [`DESIGN-multiplayer.md`](DESIGN-multiplayer.md).
 
 ## 🚀 Pubblicazione (GitHub Pages)
 

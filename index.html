@@ -28,6 +28,7 @@
           </select>
         </label>
         <button id="new-game" class="btn btn--primary">Nuova partita</button>
+        <button id="duo" class="btn btn--icon" title="Gioca in due" aria-label="Gioca in due">👥</button>
         <button id="records" class="btn btn--icon" title="Record e statistiche" aria-label="Record e statistiche">🏆</button>
       </div>
 
@@ -43,6 +44,25 @@
         <div class="stat">
           <span class="stat__label">Record</span>
           <span id="best-time" class="stat__value">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Avversario: avanzamento senza cifre, visibile solo in duello -->
+    <section id="duo-hud" class="duo-hud" hidden>
+      <div class="duo-hud__head">
+        <span class="duo-hud__label">Avversario</span>
+        <span id="duo-opp-name" class="duo-hud__name">???</span>
+        <span id="duo-link" class="duo__link">● collegato</span>
+        <button id="duo-leave" class="btn btn--link">Abbandona</button>
+      </div>
+      <div class="duo-hud__body">
+        <div id="duo-shadow" class="shadow" aria-hidden="true"></div>
+        <div class="duo-hud__stats">
+          <div class="stat"><span class="stat__label">Tempo</span><span id="duo-opp-time" class="stat__value">—</span></div>
+          <div class="stat"><span class="stat__label">Celle</span><span id="duo-opp-filled" class="stat__value">—</span></div>
+          <div class="stat"><span class="stat__label">Errori</span><span id="duo-opp-errors" class="stat__value">—</span></div>
+          <div class="stat"><span class="stat__label">Aiuti</span><span id="duo-opp-hints" class="stat__value">—</span></div>
         </div>
       </div>
     </section>
@@ -125,11 +145,153 @@
       <div id="records-tabs" class="tabs" role="tablist"></div>
       <ol id="records-list" class="scores"></ol>
       <p id="records-summary" class="modal__message"></p>
+      <p id="records-duel" class="modal__message modal__message--duel"></p>
       <button id="records-close" class="btn btn--primary btn--block">Chiudi</button>
       <button id="records-reset" class="btn btn--link">Azzera record e statistiche</button>
     </div>
   </div>
 
+  <!-- Lobby del duello -->
+  <div id="duo-overlay" class="overlay" hidden>
+    <div class="modal modal--wide">
+
+      <!-- Passo 1: cosa vuoi fare -->
+      <div id="duo-step-menu">
+        <div class="modal__icon">👥</div>
+        <h2 class="modal__title">Gioca in due</h2>
+        <p class="modal__message">Stesso puzzle, due griglie: vince chi finisce primo.</p>
+
+        <div class="duo__row">
+          <span class="field__label">Le tue iniziali</span>
+          <div id="duo-name" class="slots slots--inline" role="group" aria-label="Iniziali del giocatore"></div>
+        </div>
+
+        <label class="field">
+          <span class="field__label">Difficoltà</span>
+          <select id="duo-difficulty" class="select">
+            <option value="facile">Facile</option>
+            <option value="medio" selected>Medio</option>
+            <option value="difficile">Difficile</option>
+            <option value="esperto">Esperto</option>
+          </select>
+        </label>
+
+        <button id="duo-create" class="btn btn--primary btn--block">Crea una partita</button>
+        <button id="duo-join" class="btn btn--ghost btn--block">Unisciti a una partita</button>
+        <button id="duo-challenge" class="btn btn--ghost btn--block">Sfida con un codice</button>
+
+        <button id="duo-local" class="btn btn--link" aria-pressed="false">
+          Prova su due schede di questo browser
+        </button>
+        <p id="duo-local-note" class="duo__note" hidden>
+          Modalità di prova attiva: apri questa pagina in una seconda scheda,
+          poi premi «Crea» qui e «Unisciti» nell’altra. Nessun codice da scambiare.
+          Le due schede condividono gli stessi dati, quindi i duelli di prova
+          <strong>non vengono registrati</strong> nelle statistiche.
+        </p>
+        <button id="duo-close" class="btn btn--link">Chiudi</button>
+      </div>
+
+      <!-- Passo 2a: chi crea la partita -->
+      <div id="duo-step-host" hidden>
+        <div class="modal__icon">📨</div>
+        <h2 class="modal__title">Invita l’avversario</h2>
+        <div class="duo__field">
+          <span class="field__label">1. Mandagli questo link</span>
+          <textarea id="duo-invite" class="duo__code" rows="3" readonly></textarea>
+          <div class="duo__buttons">
+            <button id="duo-invite-share" class="btn btn--primary">Condividi</button>
+            <button id="duo-invite-copy" class="btn btn--ghost">Copia</button>
+          </div>
+        </div>
+        <div class="duo__field">
+          <span class="field__label">2. Incolla il codice di risposta che ti rimanda</span>
+          <textarea id="duo-answer-in" class="duo__code" rows="3" placeholder="S1:…"></textarea>
+          <div class="duo__buttons">
+            <button id="duo-answer-ok" class="btn btn--primary">Collega</button>
+          </div>
+        </div>
+        <p id="duo-host-status" class="duo__status"></p>
+        <label class="duo__check">
+          <input type="checkbox" id="duo-long" />
+          Codice lungo (usalo solo se quello normale non funziona)
+        </label>
+        <button id="duo-host-back" class="btn btn--link">Indietro</button>
+      </div>
+
+      <!-- Passo 2b: chi si unisce -->
+      <div id="duo-step-guest" hidden>
+        <div class="modal__icon">🤝</div>
+        <h2 class="modal__title">Unisciti alla partita</h2>
+        <div class="duo__field">
+          <span class="field__label">1. Incolla il link ricevuto</span>
+          <textarea id="duo-invite-in" class="duo__code" rows="3" placeholder="https://…#j=S1:…"></textarea>
+          <div class="duo__buttons">
+            <button id="duo-join-go" class="btn btn--primary">Genera risposta</button>
+          </div>
+        </div>
+        <div class="duo__field">
+          <span class="field__label">2. Rimanda questo codice all’avversario</span>
+          <textarea id="duo-answer-out" class="duo__code" rows="3" readonly></textarea>
+          <div class="duo__buttons">
+            <button id="duo-answer-share" class="btn btn--primary">Condividi</button>
+            <button id="duo-answer-copy" class="btn btn--ghost">Copia</button>
+          </div>
+        </div>
+        <p id="duo-guest-status" class="duo__status"></p>
+        <button id="duo-guest-back" class="btn btn--link">Indietro</button>
+      </div>
+
+      <!-- Sfida asincrona: stesso puzzle, senza collegamento -->
+      <div id="duo-step-code" hidden>
+        <div class="modal__icon">🎯</div>
+        <h2 class="modal__title">Sfida con un codice</h2>
+        <p class="modal__message">
+          Nessun collegamento: vi scambiate un codice, giocate lo stesso puzzle
+          quando volete e confrontate i tempi. Funziona sempre.
+        </p>
+        <div class="duo__field">
+          <span class="field__label">Il codice della tua partita in corso</span>
+          <input id="duo-code-current" class="duo__code duo__code--one" readonly />
+          <div class="duo__buttons">
+            <button id="duo-code-copy" class="btn btn--ghost">Copia</button>
+          </div>
+        </div>
+        <div class="duo__field">
+          <span class="field__label">Oppure gioca il puzzle di un codice ricevuto</span>
+          <input id="duo-code-in" class="duo__code duo__code--one" placeholder="MEDIO-7F3A2B" />
+          <div class="duo__buttons">
+            <button id="duo-code-go" class="btn btn--primary">Gioca questo puzzle</button>
+          </div>
+        </div>
+        <button id="duo-code-back" class="btn btn--link">Indietro</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Countdown di inizio duello -->
+  <div id="duo-count" class="overlay overlay--count" hidden>
+    <div id="duo-count-n" class="count">3</div>
+  </div>
+
+  <!-- Esito del duello -->
+  <div id="duo-result" class="overlay" hidden>
+    <div class="modal">
+      <div id="duo-result-icon" class="modal__icon">🏆</div>
+      <h2 id="duo-result-title" class="modal__title">Hai vinto!</h2>
+      <p id="duo-result-msg" class="modal__message"></p>
+      <div class="duo__results">
+        <div id="duo-result-mine" class="duo__result"></div>
+        <div id="duo-result-theirs" class="duo__result"></div>
+      </div>
+      <button id="duo-rematch" class="btn btn--primary btn--block">Rivincita</button>
+      <button id="duo-result-close" class="btn btn--link">Chiudi</button>
+    </div>
+  </div>
+
+  <script src="net.js"></script>
   <script src="script.js"></script>
+  <script src="duo.js"></script>
 </body>
 </html>

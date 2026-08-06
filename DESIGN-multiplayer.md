@@ -3,7 +3,8 @@
 Documento di progettazione della modalità a due giocatori su **dispositivi diversi**
 (due PC, due telefoni, PC + telefono). Da rivedere e discutere *prima* di scrivere codice.
 
-Stato: **proposta**, nessuna riga implementata.
+Stato: **duello realizzato** (fasi 1–4 di §14). Il co-op (§6) resta da fare.
+Le decisioni prese durante la realizzazione sono annotate in §16.
 
 ---
 
@@ -420,29 +421,75 @@ aggiornare e sorvegliare — il costo vero è quello, non la fattura.
 
 | # | Contenuto | Consegnabile visibile |
 |---|---|---|
-| 1 | PRNG seminato, refactor intento/mutazione, `boot()`, codice partita | **Sfida asincrona**: stesso puzzle da un codice, senza rete. Single player identico a oggi |
-| 2 | `Transport` + `LocalTransport`, protocollo, match, **Duello** completo, ombra avversario, esito, rivincita | Duello giocabile tra **due schede** dello stesso browser: tutta la logica e la UI sono qui |
-| 3 | `RTCTransport`: WebRTC, codifica del codice, lobby, link di invito, riconnessione | **Duello tra due dispositivi reali** — l'obiettivo |
-| 4 | Classifiche in due, rifiniture, README | Modalità completa e documentata |
-| 5 | **Co-op** sulla stessa infrastruttura (§6) | Un Sudoku in due |
+| # | Contenuto | Stato |
+|---|---|---|
+| 1 | PRNG seminato, refactor intento/mutazione, avvio pilotato, codice partita | ✅ fatto |
+| 2 | `Transport` + `LocalTransport`, protocollo, match, **Duello** completo, ombra avversario, esito, rivincita | ✅ fatto |
+| 3 | `RTCTransport`: WebRTC, codifica del codice, lobby, link di invito | ✅ fatto |
+| 4 | Statistiche dei duelli, rifiniture, README | ✅ fatto |
+| 5 | **Co-op** sulla stessa infrastruttura (§6) | da fare |
 
-Le fasi 1 e 2 sono già utili da sole. La 3 è quella che sblocca ciò che è stato
-chiesto. La 5 riusa tutto ciò che c'è prima.
+Il co-op riusa tutto ciò che c'è: trasporto, protocollo, lobby, countdown,
+rivincita. Cambia solo la gestione dello stato condiviso descritta in §6.
 
 ---
 
-## 15. Decisioni prese
+## 15. Scelte fatte durante la realizzazione
 
-- Scenario: **due dispositivi diversi** → WebRTC P2P, nessun server.
-- Prima modalità: **Duello 1 contro 1**.
-- Co-op: subito dopo, sulla stessa infrastruttura.
+Confermato dal progetto:
 
-## 16. Punti aperti
+- WebRTC P2P senza server, con scambio manuale dell'invito; codice compatto di
+  **~235 caratteri** in pratica (stima di §3: 200–400), condiviso come link.
+- Host autorevole sull'esito: un solo verdetto, mai due schermi in disaccordo.
+- Statistiche dei duelli separate (`sudoku.duel.stats.v1`); la classifica del
+  single player non viene toccata.
 
-1. **Note in duello:** private (proposta) o mostrate come conteggio all'avversario?
-2. **Limite di tempo:** un duello può durare all'infinito. Serve un tetto opzionale
-   (es. 30 minuti) o si lascia libero?
-3. **Difficoltà in rivincita:** si può cambiare tra una partita e l'altra, o resta
-   fissa per tutta la sessione?
-4. **Sfida asincrona nella UI:** la esponiamo come funzione visibile («Sfida un
-   amico con un codice») o resta un dettaglio tecnico interno al duello?
+Deciso strada facendo, sui punti che erano rimasti aperti:
+
+1. **Note in duello: private.** Non vengono trasmesse in alcuna forma.
+2. **Nessun tetto di tempo.** Un duello dura quanto serve.
+3. **Difficoltà fissa per sessione.** La rivincita usa la stessa difficoltà; per
+   cambiarla si torna in lobby.
+4. **Sfida asincrona esposta nella UI**, come terza voce del pannello: è la via
+   che funziona sempre quando il P2P non si collega, quindi deve essere visibile.
+
+Deciso per necessità, emerso solo scrivendo il codice:
+
+5. **Un duello non si salva.** Ricaricando la pagina il canale è perduto e non
+   riapribile senza rifare lo scambio: proporre una ripresa impossibile sarebbe
+   peggio che non proporla. La partita in solitaria resta intatta a parte —
+   *finché* il duello resta un duello: se lo si abbandona o lo si prosegue da
+   soli, quella griglia diventa la partita in corso e prende il posto del
+   salvataggio precedente. È la conseguenza voluta di «continua da solo», ma va
+   detta: il Sudoku che era in pausa prima del duello in quel caso si perde.
+6. **Chi è ancora in gioco batte chi è già fuori.** Se l'avversario esaurisce i 3
+   errori si vince anche senza aver completato la griglia — ma senza registrare un
+   "miglior tempo", che spetta solo a chi finisce il puzzle.
+7. **L'invito funziona anche a gioco già aperto.** Aprire un link `#j=…` con la
+   pagina viva cambia solo il frammento e non ricarica nulla: l'evento
+   `hashchange` va intercettato, altrimenti il secondo giocatore resta fermo.
+8. **Ripiego automatico sul codice lungo.** Se un SDP non ha candidati utilizzabili
+   la codifica compatta non è affidabile: si emette direttamente il codice lungo
+   invece di produrne uno rotto. Resta anche la casella per forzarlo a mano.
+9. **Nessuna statistica nella prova su due schede.** Le due schede condividono il
+   `localStorage`: la stessa partita verrebbe contata sia come vittoria sia come
+   sconfitta, e la seconda scrittura cancellerebbe la prima. In modalità di prova
+   non si registra nulla, e la nota nella lobby lo dice. Su due dispositivi reali
+   il problema non esiste, perché ognuno ha i suoi dati.
+
+## 16. Verifiche
+
+Provato su Chromium con due contesti separati (due "dispositivi"):
+
+- collegamento WebRTC reale con l'SDP ricostruito dal codice compatto — è la
+  verifica che conta, perché dice che la ricostruzione di §3 regge davvero;
+- stesso puzzle su entrambi, countdown, ombra avversario, esito coerente sui due
+  schermi, rivincita senza riscambio di codici;
+- sconfitta per errori esauriti, connessione perduta con le due vie d'uscita,
+  vittoria a tavolino, protocollo incompatibile;
+- sfida con codice: lo stesso codice dà lo stesso puzzle su dispositivi diversi;
+- non-regressione del single player: note, aiuti, annulla, pausa, ripresa dopo
+  ricarica, iniziali arcade, classifica, sconfitta al terzo errore.
+
+Resta da provare **Safari iOS**, che è il browser dove la ricostruzione dell'SDP
+ha più probabilità di fare storie (§11).

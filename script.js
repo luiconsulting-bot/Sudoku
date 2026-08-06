@@ -16,11 +16,14 @@ const MAX_MISTAKES = 3;
 const MAX_HINTS = 3;
 
 // Chiavi di localStorage (versionate: cambiare versione invalida i vecchi dati)
+// Il multiplayer usa chiavi proprie: una partita in due non deve mai sovrascrivere
+// la partita in corso del single player, né finire nella sua classifica.
 const STORAGE = {
   save: 'sudoku.save.v1',
   stats: 'sudoku.stats.v1',
   scores: 'sudoku.scores.v1',
   name: 'sudoku.name.v1',
+  duelStats: 'sudoku.duel.stats.v1',
 };
 
 // Classifica in stile arcade: 3 iniziali, 5 posizioni per difficoltà
@@ -28,11 +31,50 @@ const MAX_SCORES = 5;
 const NAME_LEN = 3;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+/* ---------- Sorgente casuale riproducibile ---------- */
+
+// PRNG deterministico (mulberry32): a parità di seed produce sempre la stessa
+// sequenza su qualunque browser. È ciò che rende un puzzle identificabile da un
+// codice — indispensabile per far giocare due dispositivi sulla stessa griglia.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Seed a 24 bit: 16 milioni di puzzle per livello, e un codice corto da condividere
+const SEED_BITS = 24;
+const SEED_HEX = 6;
+const randomSeed = () => Math.floor(Math.random() * 2 ** SEED_BITS);
+
+// Codice partita, es. "MEDIO-7F3A2B": identifica difficoltà + puzzle
+function makeMatchCode(difficulty, seed) {
+  const hex = (seed >>> 0).toString(16).toUpperCase().padStart(SEED_HEX, '0');
+  return `${difficulty.toUpperCase()}-${hex}`;
+}
+
+function parseMatchCode(code) {
+  const m = /^\s*([A-Za-z]+)\s*-\s*([0-9A-Fa-f]{1,8})\s*$/.exec(String(code || ''));
+  if (!m) return null;
+  const difficulty = m[1].toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(DIFFICULTY, difficulty)) return null;
+  const seed = parseInt(m[2], 16);
+  if (!Number.isFinite(seed)) return null;
+  return { difficulty, seed };
+}
+
 /* ---------- Generatore di Sudoku ---------- */
 
-const shuffle = (arr) => {
+// `rng` è iniettato: in single player si semina a caso, in multiplayer dal seed
+// condiviso. Il generatore non chiama mai Math.random direttamente, altrimenti
+// due dispositivi con lo stesso seed otterrebbero puzzle diversi.
+const shuffle = (arr, rng) => {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
@@ -53,15 +95,15 @@ function isValid(board, r, c, val) {
 }
 
 // Riempie una griglia vuota con una soluzione valida completa
-function fillBoard(board) {
+function fillBoard(board, rng) {
   for (let r = 0; r < 9; r++) {
     for (let c = 0; c < 9; c++) {
       if (board[r][c] === 0) {
-        const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9], rng);
         for (const val of nums) {
           if (isValid(board, r, c, val)) {
             board[r][c] = val;
-            if (fillBoard(board)) return true;
+            if (fillBoard(board, rng)) return true;
             board[r][c] = 0;
           }
         }
@@ -99,13 +141,14 @@ function countSolutions(board, limit = 2) {
 
 const cloneBoard = (b) => b.map((row) => row.slice());
 
-// Genera un puzzle: {puzzle, solution}
-function generatePuzzle(remove) {
+// Genera un puzzle: {puzzle, solution}. Deterministico a parità di seed.
+function generatePuzzle(remove, seed) {
+  const rng = mulberry32(seed);
   const solution = Array.from({ length: 9 }, () => Array(9).fill(0));
-  fillBoard(solution);
+  fillBoard(solution, rng);
 
   const puzzle = cloneBoard(solution);
-  const positions = shuffle([...Array(81).keys()]);
+  const positions = shuffle([...Array(81).keys()], rng);
   let removed = 0;
 
   for (const pos of positions) {
@@ -256,9 +299,75 @@ const loadLastName = () => {
   return typeof n === 'string' && n.length === NAME_LEN ? n : 'AAA';
 };
 
+/* ---------- Statistiche dei duelli (separate dal single player) ---------- */
+
+const emptyDuelStat = () => ({ played: 0, won: 0, best: null, streak: 0, bestStreak: 0 });
+
+function loadDuelStats() {
+  const saved = readStore(STORAGE.duelStats, {});
+  const stats = {};
+  for (const key of Object.keys(DIFFICULTY)) {
+    stats[key] = { ...emptyDuelStat(), ...(saved && saved[key]) };
+  }
+  return stats;
+}
+
+// Registra l'esito di un duello. `seconds` conta solo per le vittorie.
+function recordDuel(difficulty, won, seconds) {
+  const stats = loadDuelStats();
+  const s = stats[difficulty];
+  s.played++;
+  if (won) {
+    s.won++;
+    s.streak++;
+    if (s.streak > s.bestStreak) s.bestStreak = s.streak;
+    if (Number.isFinite(seconds) && (s.best === null || seconds < s.best)) s.best = seconds;
+  } else {
+    s.streak = 0;
+  }
+  writeStore(STORAGE.duelStats, stats);
+}
+
+/* ---------- Eventi (il multiplayer si aggancia qui) ---------- */
+
+// Emitter minimo: il motore annuncia cosa succede, duo.js decide cosa farne.
+// Senza questo il multiplayer dovrebbe duplicare le regole di gioco.
+const listeners = new Map();
+
+function on(event, fn) {
+  if (!listeners.has(event)) listeners.set(event, new Set());
+  listeners.get(event).add(fn);
+  return () => listeners.get(event).delete(fn);
+}
+
+function emit(event, payload) {
+  const set = listeners.get(event);
+  if (!set) return;
+  for (const fn of [...set]) {
+    try { fn(payload); } catch (err) { console.error(`[sudoku] listener ${event}`, err); }
+  }
+}
+
+// Fotografia dello stato mostrabile all'avversario: avanzamento, mai le cifre
+function getProgress() {
+  let filled = 0;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (state.values[r][c] !== 0) filled++;
+  return {
+    filled,
+    errors: state.mistakes,
+    hints: MAX_HINTS - state.hintsLeft,
+    elapsed: elapsedSeconds(),
+    cells: state.values.flat().map((v) => (v !== 0 ? 1 : 0)),
+  };
+}
+
 /* ---------- Stato del gioco ---------- */
 
 const state = {
+  mode: 'solo',     // 'solo' | 'duel' — in duello l'esito lo gestisce duo.js
+  seed: 0,          // seed del puzzle corrente (per il codice partita)
   puzzle: [],       // griglia iniziale (0 = vuota)
   solution: [],     // soluzione completa
   values: [],       // valori inseriti dal giocatore (include i given)
@@ -276,6 +385,7 @@ const state = {
   timerId: null,
   paused: false,
   busy: false,      // true durante la generazione
+  waiting: false,   // griglia pronta ma partita non ancora avviata (countdown del duello)
   finished: false,
 };
 
@@ -308,6 +418,7 @@ const $recordsOverlay = document.getElementById('records-overlay');
 const $recordsTabs = document.getElementById('records-tabs');
 const $recordsList = document.getElementById('records-list');
 const $recordsSummary = document.getElementById('records-summary');
+const $recordsDuel = document.getElementById('records-duel');
 const $recordsClose = document.getElementById('records-close');
 const $recordsReset = document.getElementById('records-reset');
 const $nameOverlay = document.getElementById('name-overlay');
@@ -320,9 +431,20 @@ const idx = (r, c) => r * 9 + c;
 
 /* ---------- Nuova partita ---------- */
 
-function newGame() {
-  if (state.busy) return;
-  const difficulty = $difficulty.value;
+// Avvia una partita. `seed` assente → puzzle casuale; `mode: 'duel'` delega
+// l'esito al multiplayer. `autostart: false` prepara la griglia senza far
+// partire il cronometro (il duello attende il countdown).
+let genToken = 0;
+
+function startGame({ difficulty, seed, mode = 'solo', autostart = true, onReady } = {}) {
+  // Ogni richiesta invalida la precedente: se il duello chiede un puzzle mentre
+  // ne stiamo ancora generando un altro, vince la richiesta più recente invece
+  // di essere scartata in silenzio.
+  const token = ++genToken;
+  const diff = Object.prototype.hasOwnProperty.call(DIFFICULTY, difficulty)
+    ? difficulty
+    : $difficulty.value;
+  const s = Number.isFinite(seed) ? seed >>> 0 : randomSeed();
 
   // La generazione è sincrona e può bloccare il thread per ~1s sui livelli alti:
   // mostriamo prima il velo e generiamo al frame successivo, così la UI reagisce.
@@ -334,9 +456,13 @@ function newGame() {
   showVeil('⏳', 'Genero il puzzle…', { spin: true });
 
   setTimeout(() => {
-    const { puzzle, solution } = generatePuzzle(DIFFICULTY[difficulty].remove);
+    if (token !== genToken) return; // sostituita da una richiesta più recente
+    const { puzzle, solution } = generatePuzzle(DIFFICULTY[diff].remove, s);
+    if (token !== genToken) return;
 
-    state.difficulty = difficulty;
+    state.mode = mode;
+    state.seed = s;
+    state.difficulty = diff;
     state.puzzle = puzzle;
     state.solution = solution;
     state.values = cloneBoard(puzzle);
@@ -350,22 +476,56 @@ function newGame() {
     state.finished = false;
     state.paused = false;
     state.busy = false;
+    state.waiting = !autostart;
 
-    hideVeil();
+    document.body.classList.toggle('is-duel', mode === 'duel');
+    $difficulty.value = diff;
     syncHud();
     buildBoard();
     render();
-    startTimer(0);
-    saveGame();
+
+    if (autostart) {
+      hideVeil();
+      startTimer(0);
+      saveGame();
+    } else {
+      // Griglia pronta ma coperta: il duello la scopre al countdown
+      state.elapsed = 0;
+      $timer.textContent = formatTime(0);
+      showVeil('⏳', 'In attesa dell’avversario…');
+      $veilBtn.hidden = true;
+    }
+
+    emit('start', { difficulty: diff, seed: s, mode });
+    if (onReady) onReady();
   }, 30);
+}
+
+// Scopre la griglia e avvia il cronometro di una partita preparata con autostart: false
+function beginPrepared() {
+  state.waiting = false;
+  hideVeil();
+  $veilBtn.hidden = false;
+  startTimer(0);
+  saveGame();
+}
+
+function newGame() {
+  if (state.mode === 'duel' && !state.finished) return; // in duello ci pensa duo.js
+  startGame({ difficulty: $difficulty.value, mode: 'solo' });
 }
 
 /* ---------- Ripresa di una partita salvata ---------- */
 
 function saveGame() {
   if (state.finished || state.busy) return;
+  // Un duello non si riprende: ricaricando la pagina il canale con l'avversario
+  // è perduto e non c'è modo di riaprirlo senza rifare lo scambio dei codici.
+  // Meglio non salvare che proporre una ripresa che non può funzionare.
+  if (state.mode === 'duel') return;
   writeStore(STORAGE.save, {
     difficulty: state.difficulty,
+    seed: state.seed,
     puzzle: state.puzzle,
     solution: state.solution,
     values: state.values,
@@ -390,6 +550,8 @@ function restoreGame() {
   const saved = readStore(STORAGE.save, null);
   if (!isValidSave(saved)) return false;
 
+  state.mode = 'solo';
+  state.seed = Number.isFinite(saved.seed) ? saved.seed : 0;
   state.difficulty = saved.difficulty;
   state.puzzle = saved.puzzle;
   state.solution = saved.solution;
@@ -540,8 +702,9 @@ function updateNumpadCounts() {
 
 /* ---------- Interazione ---------- */
 
-// Il gioco accetta input solo a partita viva, non in pausa e non durante la generazione
-const canPlay = () => !state.finished && !state.paused && !state.busy;
+// Il gioco accetta input solo a partita viva, non in pausa, non durante la
+// generazione e non prima del via (il countdown del duello)
+const canPlay = () => !state.finished && !state.paused && !state.busy && !state.waiting;
 
 function selectCell(r, c) {
   if (!canPlay()) return;
@@ -744,6 +907,8 @@ function formatTime(sec) {
 
 function togglePause() {
   if (state.finished || state.busy) return;
+  // In duello la pausa sarebbe un vantaggio: fermerebbe solo il proprio cronometro
+  if (state.mode === 'duel') { showToast('In duello la pausa è disattivata'); return; }
   state.paused ? resumeGame() : pauseGame();
 }
 
@@ -789,9 +954,11 @@ function finishGame(won) {
   const seconds = elapsedSeconds();
   state.finished = true;
   stopTimer();
-  removeStore(STORAGE.save); // la partita è chiusa: niente da riprendere
-  recordResult(state.difficulty, won, seconds);
-  updateBestTime();
+  if (state.mode === 'solo') {
+    removeStore(STORAGE.save); // la partita è chiusa: niente da riprendere
+    recordResult(state.difficulty, won, seconds);
+    updateBestTime();
+  }
   return { seconds };
 }
 
@@ -800,6 +967,14 @@ function win() {
   const errors = state.mistakes;
   const hints = MAX_HINTS - state.hintsLeft;
   const { seconds } = finishGame(true);
+
+  // In duello non c'è un vincitore finché non si sa cosa ha fatto l'altro:
+  // l'esito lo dichiara duo.js dopo il confronto con l'avversario.
+  if (state.mode === 'duel') {
+    emit('complete', { won: true, seconds, errors, hints });
+    return;
+  }
+
   const rank = scoreRank(state.difficulty, seconds, errors, hints);
 
   // Se il risultato entra in classifica, prima si inseriscono le iniziali
@@ -825,7 +1000,15 @@ function showWinModal(seconds, rank) {
 }
 
 function gameOver() {
+  const errors = state.mistakes;
+  const hints = MAX_HINTS - state.hintsLeft;
   const { seconds } = finishGame(false);
+
+  if (state.mode === 'duel') {
+    emit('complete', { won: false, seconds, errors, hints });
+    return;
+  }
+
   showModal({
     icon: '💥',
     title: 'Game Over',
@@ -859,30 +1042,32 @@ function showModal({ icon, title, message, seconds, rank }) {
 
 /* ---------- Inserimento iniziali (stile arcade) ---------- */
 
-const nameEntry = { letters: [], pos: 0, onDone: null };
+// Widget riutilizzabile: le 3 iniziali in stile cabinato. Serve nell'overlay dei
+// record e, identico, nella lobby del multiplayer.
+function createSlots(container) {
+  const st = { letters: ['A', 'A', 'A'], pos: 0 };
+  const api = { onEnter: null };
 
-function askName(difficulty, seconds, rank, errors, hints, onDone) {
-  nameEntry.letters = loadLastName().split('');
-  nameEntry.pos = 0;
-  nameEntry.onDone = onDone;
+  function renderSlots() {
+    for (const slot of container.children) {
+      const i = Number(slot.dataset.i);
+      slot.querySelector('.slot__letter').textContent = st.letters[i];
+      slot.classList.toggle('slot--active', i === st.pos);
+    }
+  }
 
-  $nameTitle.textContent = rank === 0 ? 'Nuovo record!' : 'Sei in classifica!';
-  $nameSub.textContent =
-    `${rank + 1}° posto · ${DIFFICULTY[difficulty].label} · ${formatTime(seconds)} · ${penaltyLabel(errors, hints)}`;
+  function cycle(dir) {
+    const cur = ALPHABET.indexOf(st.letters[st.pos]);
+    st.letters[st.pos] = ALPHABET[(cur + dir + ALPHABET.length) % ALPHABET.length];
+    renderSlots();
+  }
 
-  buildSlots();
-  renderSlots();
-  $nameOverlay.hidden = false;
-}
+  function move(step) {
+    st.pos = Math.min(NAME_LEN - 1, Math.max(0, st.pos + step));
+    renderSlots();
+  }
 
-// Etichetta compatta per errori e aiuti (o "senza sbavature" se zero di entrambi)
-function penaltyLabel(errors, hints) {
-  if (errors === 0 && hints === 0) return '✨ perfetto';
-  return `❌ ${errors} · 💡 ${hints}`;
-}
-
-function buildSlots() {
-  $nameSlots.innerHTML = '';
+  container.innerHTML = '';
   for (let i = 0; i < NAME_LEN; i++) {
     const slot = document.createElement('div');
     slot.className = 'slot';
@@ -893,46 +1078,74 @@ function buildSlots() {
       <button class="slot__arrow" data-dir="-1" aria-label="Lettera precedente">▼</button>`;
 
     slot.querySelector('.slot__letter').addEventListener('click', () => {
-      nameEntry.pos = i;
+      st.pos = i;
       renderSlots();
     });
     for (const arrow of slot.querySelectorAll('.slot__arrow')) {
       arrow.addEventListener('click', () => {
-        nameEntry.pos = i;
-        cycleLetter(Number(arrow.dataset.dir));
+        st.pos = i;
+        cycle(Number(arrow.dataset.dir));
       });
     }
-    $nameSlots.appendChild(slot);
+    container.appendChild(slot);
   }
+
+  api.setValue = (v) => {
+    const letters = String(v || '').toUpperCase().padEnd(NAME_LEN, 'A').slice(0, NAME_LEN).split('');
+    st.letters = letters.map((ch) => (ALPHABET.includes(ch) ? ch : 'A'));
+    st.pos = 0;
+    renderSlots();
+  };
+  api.getValue = () => st.letters.join('');
+
+  // Ritorna true se il tasto è stato consumato dal widget
+  api.handleKey = (e) => {
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault();
+      st.letters[st.pos] = e.key.toUpperCase();
+      move(1);
+      return true;
+    }
+    switch (e.key) {
+      case 'ArrowUp': e.preventDefault(); cycle(1); return true;
+      case 'ArrowDown': e.preventDefault(); cycle(-1); return true;
+      case 'ArrowLeft': e.preventDefault(); move(-1); return true;
+      case 'ArrowRight': e.preventDefault(); move(1); return true;
+      case 'Backspace': e.preventDefault(); st.letters[st.pos] = 'A'; move(-1); return true;
+      case 'Enter': e.preventDefault(); if (api.onEnter) api.onEnter(); return true;
+    }
+    return false;
+  };
+
+  api.setValue('AAA');
+  return api;
 }
 
-function renderSlots() {
-  for (const slot of $nameSlots.children) {
-    const i = Number(slot.dataset.i);
-    slot.querySelector('.slot__letter').textContent = nameEntry.letters[i];
-    slot.classList.toggle('slot--active', i === nameEntry.pos);
+const nameEntry = { slots: null, onDone: null };
+
+function askName(difficulty, seconds, rank, errors, hints, onDone) {
+  if (!nameEntry.slots) {
+    nameEntry.slots = createSlots($nameSlots);
+    nameEntry.slots.onEnter = confirmName;
   }
+  nameEntry.slots.setValue(loadLastName());
+  nameEntry.onDone = onDone;
+
+  $nameTitle.textContent = rank === 0 ? 'Nuovo record!' : 'Sei in classifica!';
+  $nameSub.textContent =
+    `${rank + 1}° posto · ${DIFFICULTY[difficulty].label} · ${formatTime(seconds)} · ${penaltyLabel(errors, hints)}`;
+
+  $nameOverlay.hidden = false;
 }
 
-function cycleLetter(dir) {
-  const cur = ALPHABET.indexOf(nameEntry.letters[nameEntry.pos]);
-  const next = (cur + dir + ALPHABET.length) % ALPHABET.length;
-  nameEntry.letters[nameEntry.pos] = ALPHABET[next];
-  renderSlots();
-}
-
-function setLetter(letter) {
-  nameEntry.letters[nameEntry.pos] = letter;
-  moveSlot(1);
-}
-
-function moveSlot(step) {
-  nameEntry.pos = Math.min(NAME_LEN - 1, Math.max(0, nameEntry.pos + step));
-  renderSlots();
+// Etichetta compatta per errori e aiuti (o "senza sbavature" se zero di entrambi)
+function penaltyLabel(errors, hints) {
+  if (errors === 0 && hints === 0) return '✨ perfetto';
+  return `❌ ${errors} · 💡 ${hints}`;
 }
 
 function confirmName() {
-  const name = nameEntry.letters.join('');
+  const name = nameEntry.slots.getValue();
   writeStore(STORAGE.name, name); // prefill per la prossima volta
   $nameOverlay.hidden = true;
   const done = nameEntry.onDone;
@@ -940,21 +1153,7 @@ function confirmName() {
   if (done) done(name);
 }
 
-function handleNameKey(e) {
-  if (/^[a-zA-Z]$/.test(e.key)) {
-    e.preventDefault();
-    setLetter(e.key.toUpperCase());
-    return;
-  }
-  switch (e.key) {
-    case 'ArrowUp': e.preventDefault(); cycleLetter(1); break;
-    case 'ArrowDown': e.preventDefault(); cycleLetter(-1); break;
-    case 'ArrowLeft': e.preventDefault(); moveSlot(-1); break;
-    case 'ArrowRight': e.preventDefault(); moveSlot(1); break;
-    case 'Backspace': e.preventDefault(); nameEntry.letters[nameEntry.pos] = 'A'; moveSlot(-1); break;
-    case 'Enter': e.preventDefault(); confirmName(); break;
-  }
-}
+const handleNameKey = (e) => nameEntry.slots && nameEntry.slots.handleKey(e);
 
 /* ---------- Record e statistiche ---------- */
 
@@ -1029,12 +1228,23 @@ function renderRecords() {
     ? ' — a parità di tempo conta chi ha meno ❌ e 💡 (gli aiuti pesano più degli errori).'
     : '';
   $recordsSummary.textContent = stats + legend;
+
+  // I duelli hanno una riga a parte: non entrano nella classifica del single player
+  const d = loadDuelStats()[recordsTab];
+  if (d.played === 0) {
+    $recordsDuel.textContent = '⚔️ Nessun duello giocato a questo livello.';
+  } else {
+    const best = d.best === null ? '—' : formatTime(d.best);
+    $recordsDuel.textContent =
+      `⚔️ Duelli: ${d.won} vinti su ${d.played} · miglior tempo ${best} · miglior serie ${d.bestStreak}`;
+  }
 }
 
 function resetStats() {
   if (!confirm('Vuoi davvero azzerare record e statistiche? L’operazione non è reversibile.')) return;
   removeStore(STORAGE.stats);
   removeStore(STORAGE.scores);
+  removeStore(STORAGE.duelStats);
   updateBestTime();
   renderRecords();
   showToast('Record e statistiche azzerati');
@@ -1060,8 +1270,9 @@ document.addEventListener('keydown', (e) => {
   // L'inserimento delle iniziali cattura la tastiera finché è aperto
   if (!$nameOverlay.hidden) { handleNameKey(e); return; }
 
-  // Con un overlay aperto la tastiera di gioco è disattivata
-  if (!$overlay.hidden || !$recordsOverlay.hidden) {
+  // Con un overlay aperto (fine partita, record, lobby del multiplayer…) la
+  // tastiera di gioco è disattivata: chi ha aperto l'overlay gestisce i suoi tasti.
+  if (document.querySelector('.overlay:not([hidden])')) {
     if (e.key === 'Escape') $recordsOverlay.hidden = true;
     return;
   }
@@ -1123,8 +1334,11 @@ document.addEventListener('click', (e) => {
 // Cambiando difficoltà si aggiorna il record mostrato (la partita in corso resta)
 $difficulty.addEventListener('change', updateBestTime);
 
-// Mette in pausa e salva quando la scheda passa in background
+// Mette in pausa e salva quando la scheda passa in background.
+// In duello no: il cronometro dell'avversario continua a correre, quindi anche il
+// nostro deve farlo — mettere in pausa cambiando scheda sarebbe un vantaggio.
 document.addEventListener('visibilitychange', () => {
+  if (state.mode === 'duel') return;
   if (document.hidden && !state.finished && !state.busy) {
     pauseTimer();
     saveGame();
@@ -1143,3 +1357,43 @@ if (restoreGame()) {
 } else {
   newGame();
 }
+
+/* ---------- Interfaccia per il multiplayer (duo.js) ---------- */
+
+window.Sudoku = {
+  DIFFICULTY,
+  MAX_MISTAKES,
+  MAX_HINTS,
+  startGame,
+  beginPrepared,
+  // Ferma la partita senza registrare nulla: serve a chi perde un duello
+  // mentre stava ancora giocando.
+  abortGame: () => {
+    if (state.finished) return;
+    state.finished = true;
+    stopTimer();
+  },
+  // Un duello abbandonato dall'avversario può proseguire come partita in
+  // solitaria: da qui in poi vale tutto ciò che vale nel single player.
+  convertToSolo: () => {
+    state.mode = 'solo';
+    document.body.classList.remove('is-duel');
+    saveGame();
+  },
+  getProgress,
+  getState: () => state,
+  isFinished: () => state.finished,
+  recordDuel,
+  loadDuelStats,
+  loadLastName,
+  saveLastName: (name) => writeStore(STORAGE.name, name),
+  createSlots,
+  makeMatchCode,
+  parseMatchCode,
+  randomSeed,
+  formatTime,
+  showToast,
+  showVeil,
+  hideVeil,
+  on,
+};

@@ -436,6 +436,140 @@ body {
 .score__date { font-size: 0.72rem; color: var(--text-muted); min-width: 58px; text-align: right; }
 .score--new { background: #fef3c7; border-radius: 8px; animation: pop 0.6s ease; }
 .scores__empty { text-align: center; color: var(--text-muted); font-size: 0.88rem; padding: 22px 0; }
+.modal__message--duel { margin: -8px 0 14px; font-size: 0.84rem; }
+
+/* ============================================================
+   Duello a due
+   ============================================================ */
+
+/* Pannello dell'avversario: avanzamento, mai le cifre */
+.duo-hud {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.duo-hud[hidden] { display: none; }
+.duo-hud__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.duo-hud__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.duo-hud__name { font-weight: 800; letter-spacing: 0.1em; color: var(--accent); }
+/* .btn--link è a larghezza piena: qui deve restare in riga, a destra */
+.duo-hud__head .btn--link { width: auto; margin-left: auto; padding: 4px 0; }
+.duo-hud__body { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.duo-hud__stats { display: flex; gap: 18px; flex: 1; justify-content: space-around; }
+.duo-hud__stats .stat__value { font-size: 1.1rem; }
+
+/* Griglia ombra: 81 quadratini pieni o vuoti */
+.shadow {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 1px;
+  width: 90px;
+  aspect-ratio: 1;
+  flex: none;
+  padding: 3px;
+  background: var(--surface-alt);
+  border-radius: 8px;
+}
+.shadow__cell { background: var(--border); border-radius: 1px; opacity: 0.35; }
+.shadow__cell--on { background: var(--accent); opacity: 1; }
+
+.duo__link { font-size: 0.72rem; font-weight: 700; }
+.duo__link--ok { color: var(--success); }
+.duo__link--warn { color: var(--gold); }
+.duo__link--bad { color: var(--danger); }
+
+/* Lobby */
+.modal--wide { max-width: 460px; }
+.duo__row { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
+.slots--inline { margin: 6px 0 0; }
+.duo__field { text-align: left; margin: 14px 0; }
+.duo__field .field__label { display: block; margin-bottom: 5px; }
+.duo__code {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 9px 11px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--text);
+  resize: vertical;
+  word-break: break-all;
+}
+.duo__code:focus { outline: none; border-color: var(--primary); }
+.duo__code--one {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  resize: none;
+}
+.duo__buttons { display: flex; gap: 8px; margin-top: 8px; }
+.duo__buttons .btn { flex: 1; justify-content: center; }
+.duo__status { margin: 12px 0 0; font-size: 0.84rem; color: var(--text-muted); min-height: 1.2em; }
+.duo__status--ok { color: var(--success); font-weight: 600; }
+.duo__status--bad { color: var(--danger); font-weight: 600; }
+.duo__note {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.duo__note[hidden] { display: none; }
+.duo__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 12px;
+  text-align: left;
+}
+
+/* Countdown */
+.overlay--count { background: rgba(15, 23, 42, 0.82); }
+.count {
+  font-size: 6rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 10px 40px rgba(79, 70, 229, 0.8);
+  animation: pop 0.5s ease;
+}
+
+/* Esito */
+.duo__results { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 16px; }
+.duo__result {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--surface-alt);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.duo__who { font-weight: 800; letter-spacing: 0.08em; text-align: left; }
+.duo__val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.duo__pen { font-size: 0.78rem; color: var(--text-muted); }
+
+/* In duello la difficoltà non si cambia a metà partita e la pausa non esiste.
+   Si nasconde l'intera etichetta, non solo il menu, per non lasciare orfana
+   la scritta "Difficoltà". */
+body.is-duel .toolbar__group .field,
+body.is-duel #new-game,
+body.is-duel #pause { display: none; }
 
 @media (max-width: 420px) {
   .toolbar { flex-direction: column; align-items: stretch; }
@@ -443,4 +577,7 @@ body {
   .stat:first-child { text-align: left; }
   .btn__text { display: none; }
   .modal__stats { gap: 14px; }
+  .duo-hud__body { flex-direction: column; align-items: stretch; }
+  .shadow { align-self: center; }
+  .duo-hud__stats { gap: 8px; }
 }
