@@ -155,7 +155,7 @@ solo dal PRNG, non da `Math.random` né da API di piattaforma.
 ## 5. Modalità Duello (prima consegna)
 
 Stesso puzzle, **due griglie indipendenti**. Nessun attacco, nessun sabotaggio,
-nessun potere speciale: è una corsa. (Il perché in §12.)
+nessun potere speciale: è una corsa. (Il perché in §13.)
 
 ### Regole
 
@@ -345,7 +345,7 @@ spinner infinito.
 
 | Rischio | Mitigazione |
 |---|---|
-| **Senza TURN alcune reti non si collegano** (NAT simmetrico, certe reti mobili/aziendali) | messaggio esplicito con il suggerimento *"provate sulla stessa rete Wi-Fi"*, più la **sfida asincrona** (§4) che funziona sempre. Un TURN richiederebbe un server: fuori dai vincoli, riapribile in futuro |
+| **Senza TURN alcune reti non si collegano** (NAT simmetrico, certe reti mobili/aziendali) | messaggio esplicito con il suggerimento *"provate sulla stessa rete Wi-Fi"*, più la **sfida asincrona** (§4) che funziona sempre. Un TURN pubblico gratuito esiste e si può aggiungere dopo senza toccare il resto: vedi §12 |
 | **Il guest riceve il seed, quindi può calcolare la soluzione** dai devtools | tradeoff accettato: è già così in single player (la soluzione sta in `localStorage`). In una partita tra amici il baro non è la minaccia principale. Nessun anti-cheat serio è possibile senza un server autorevole |
 | **Il copia-incolla del codice è attrito reale** | link condivisibile + pulsanti Copia/Condividi + rivincita che riusa il canale (si paga una volta per sessione, non per partita) |
 | **Compatibilità WebRTC tra browser** (Safari iOS è il caso delicato) | prova su Chrome desktop, Safari iOS e Firefox come criterio di accettazione della fase 3, non come verifica finale |
@@ -354,7 +354,57 @@ spinner infinito.
 
 ---
 
-## 12. Fuori scope (per ora, e volutamente)
+## 12. Costi
+
+**Il progetto qui descritto non costa nulla e non richiede alcun account.**
+Il traffico di gioco viaggia direttamente tra i due dispositivi: non c'è niente da
+pagare perché non c'è niente in mezzo.
+
+| Cosa | Costo | Note |
+|---|---|---|
+| **GitHub Pages** | gratis | per repository pubblici; già in uso oggi |
+| **STUN** (`stun.l.google.com:19302`) | gratis, senza account | *best effort*, nessuna garanzia di servizio; serve solo per aprire il canale, non durante la partita. Sulla stessa Wi-Fi è superfluo |
+| **Traffico WebRTC** | gratis | P2P: consuma la connessione dei due giocatori, ~250 kB per una partita di 20 minuti |
+| **Sfida asincrona** (§4) | gratis | nessuna rete coinvolta |
+
+### Se un giorno servisse un TURN (per le reti che non si collegano)
+
+Esistono TURN gratuiti: l'**Open Relay Project** di Metered offre 20 GB di relay
+al mese senza costi, su porte 80/443 con UDP/TCP/TLS — utile proprio dietro i
+firewall restrittivi. Per dare una scala: un duello di 20 minuti muove ~250 kB,
+quindi 20 GB sono circa **80.000 partite al mese**. Il limite non è il problema.
+
+Due avvertenze vere, che non sono di prezzo:
+
+- le credenziali TURN dentro una pagina statica pubblica sono **leggibili da
+  chiunque**, quindi la quota è di fatto condivisa con il mondo. Per un relay
+  pubblico e gratuito è accettabile; per uno a pagamento sarebbe un rubinetto
+  aperto;
+- il traffico passa da un server terzo. Cifrato (DTLS), ma non è più
+  strettamente peer-to-peer, e va detto nel README per coerenza con la promessa
+  «nessun dato lascia il dispositivo».
+
+Il TURN è una **riga di configurazione** in più negli `iceServers`: si può
+aggiungere in qualsiasi momento, dopo, se e solo se i fallimenti di connessione
+si dimostrano un problema reale nell'uso quotidiano.
+
+### Se un giorno servisse un relay (join con codice a 4 cifre)
+
+L'opzione scartata in §1 resta gratuita se ce ne fosse bisogno:
+**Cloudflare Workers + Durable Objects** include WebSocket nel piano gratuito, con
+100.000 richieste al giorno e i messaggi in ingresso conteggiati 20:1 (quelli in
+uscita e i ping sono gratis) — per due giocatori è un consumo irrilevante.
+Da evitare invece gli hosting che **spengono il servizio per inattività**
+(Render gratuito si sospende dopo 15 minuti, con 30–60 s di riavvio a freddo):
+un giocatore che apre un invito e aspetta un minuto pensa che l'app sia rotta.
+Il piano gratuito di Fly.io non esiste più per i nuovi account.
+
+Resta comunque fuori scope: un relay significa un servizio da mantenere,
+aggiornare e sorvegliare — il costo vero è quello, non la fattura.
+
+---
+
+## 13. Fuori scope (per ora, e volutamente)
 
 - Attacchi, sabotaggi, penalità inviate all'avversario. È la via più breve al
   feature creep, e prima serve sapere se una corsa pulita è già divertente.
@@ -366,7 +416,7 @@ spinner infinito.
 
 ---
 
-## 13. Fasi di consegna
+## 14. Fasi di consegna
 
 | # | Contenuto | Consegnabile visibile |
 |---|---|---|
@@ -381,13 +431,13 @@ chiesto. La 5 riusa tutto ciò che c'è prima.
 
 ---
 
-## 14. Decisioni prese
+## 15. Decisioni prese
 
 - Scenario: **due dispositivi diversi** → WebRTC P2P, nessun server.
 - Prima modalità: **Duello 1 contro 1**.
 - Co-op: subito dopo, sulla stessa infrastruttura.
 
-## 15. Punti aperti
+## 16. Punti aperti
 
 1. **Note in duello:** private (proposta) o mostrate come conteggio all'avversario?
 2. **Limite di tempo:** un duello può durare all'infinito. Serve un tetto opzionale
