@@ -311,8 +311,14 @@ body {
   background: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  /* flex-start + margin auto sul figlio: centra quando c'è spazio e scorre
+     quando non ce n'è. Con align-items: center un modale più alto dello schermo
+     verrebbe tagliato in cima e i pulsanti in fondo resterebbero irraggiungibili
+     — cosa che succede su telefono nelle schermate di collegamento. */
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   z-index: 50;
   animation: fade 0.25s ease;
@@ -325,6 +331,7 @@ body {
   padding: 30px 28px;
   max-width: 380px;
   width: 100%;
+  margin: auto; /* centra verticalmente senza tagliare: vedi .overlay */
   text-align: center;
   box-shadow: var(--shadow);
   animation: rise 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.2);
@@ -530,13 +537,41 @@ body {
 .duo__note[hidden] { display: none; }
 .duo__check {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   font-size: 0.78rem;
   color: var(--text-muted);
   margin-top: 12px;
   text-align: left;
 }
+.duo__check input { flex: none; margin-top: 2px; }
+
+/* Età dell'invito: il varco aperto nel router non dura per sempre */
+.duo__age { margin: 6px 0 0; font-size: 0.75rem; font-weight: 600; }
+.duo__age--fresh { color: var(--success); }
+.duo__age--stale { color: var(--gold); }
+
+/* Aiuto ripiegabile «Non si collega?» */
+.duo__help {
+  text-align: left;
+  margin: 14px 0 4px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.duo__help > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--primary);
+  list-style: none;
+}
+.duo__help > summary::-webkit-details-marker { display: none; }
+.duo__help > summary::before { content: '▸ '; }
+.duo__help[open] > summary::before { content: '▾ '; }
+.duo__help ul { margin: 10px 0 0; padding-left: 18px; }
+.duo__help li { margin-bottom: 7px; line-height: 1.45; }
 
 /* Countdown */
 .overlay--count { background: rgba(15, 23, 42, 0.82); }

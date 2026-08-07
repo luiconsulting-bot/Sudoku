@@ -197,12 +197,13 @@
         <div class="modal__icon">📨</div>
         <h2 class="modal__title">Invita l’avversario</h2>
         <div class="duo__field">
-          <span class="field__label">1. Mandagli questo link</span>
+          <span class="field__label">1. Mandagli questo link, subito</span>
           <textarea id="duo-invite" class="duo__code" rows="3" readonly></textarea>
           <div class="duo__buttons">
             <button id="duo-invite-share" class="btn btn--primary">Condividi</button>
             <button id="duo-invite-copy" class="btn btn--ghost">Copia</button>
           </div>
+          <p id="duo-invite-age" class="duo__age"></p>
         </div>
         <div class="duo__field">
           <span class="field__label">2. Incolla il codice di risposta che ti rimanda</span>
@@ -212,10 +213,28 @@
           </div>
         </div>
         <p id="duo-host-status" class="duo__status"></p>
-        <label class="duo__check">
-          <input type="checkbox" id="duo-long" />
-          Codice lungo (usalo solo se quello normale non funziona)
-        </label>
+
+        <details class="duo__help">
+          <summary>Non si collega?</summary>
+          <ul>
+            <li><strong>L’invito invecchia.</strong> Il varco aperto nel router
+              dura poco: se dalla creazione è passato più di un minuto, premi
+              «Genera un nuovo invito» e rimanda il link.</li>
+            <li><strong>Provate sulla stessa rete Wi-Fi.</strong> È lo scenario
+              che riesce quasi sempre. Su rete mobile il collegamento diretto
+              spesso non è possibile.</li>
+            <li><strong>Se non riesce comunque</strong>, usa
+              <em>Sfida con un codice</em>: giocate lo stesso puzzle senza
+              collegamento e confrontate i tempi.</li>
+          </ul>
+          <label class="duo__check">
+            <input type="checkbox" id="duo-long" />
+            Codice lungo: serve solo se l’altro riceve «codice non valido».
+            Non cambia nulla se il problema è il collegamento.
+          </label>
+        </details>
+
+        <button id="duo-invite-new" class="btn btn--ghost btn--block">Genera un nuovo invito</button>
         <button id="duo-host-back" class="btn btn--link">Indietro</button>
       </div>
 
@@ -231,7 +250,7 @@
           </div>
         </div>
         <div class="duo__field">
-          <span class="field__label">2. Rimanda questo codice all’avversario</span>
+          <span class="field__label">2. Rimanda questo codice all’avversario, subito</span>
           <textarea id="duo-answer-out" class="duo__code" rows="3" readonly></textarea>
           <div class="duo__buttons">
             <button id="duo-answer-share" class="btn btn--primary">Condividi</button>
@@ -239,6 +258,10 @@
           </div>
         </div>
         <p id="duo-guest-status" class="duo__status"></p>
+        <label class="duo__check">
+          <input type="checkbox" id="duo-long-g" />
+          Codice lungo: usalo se l’altro ti dice «codice non valido».
+        </label>
         <button id="duo-guest-back" class="btn btn--link">Indietro</button>
       </div>
 

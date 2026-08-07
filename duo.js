@@ -41,6 +41,8 @@
     hbId: null,
     progId: null,
     watchId: null,
+    ageId: null,          // aggiorna l'età dell'invito mostrata all'host
+    inviteAt: 0,
     lastSeen: 0,
     lostAsked: false,
     rematchMine: false,
@@ -72,11 +74,14 @@
     invite: $('duo-invite'),
     inviteCopy: $('duo-invite-copy'),
     inviteShare: $('duo-invite-share'),
+    inviteAge: $('duo-invite-age'),
+    inviteNew: $('duo-invite-new'),
     answerIn: $('duo-answer-in'),
     answerOk: $('duo-answer-ok'),
     hostStatus: $('duo-host-status'),
     hostBack: $('duo-host-back'),
     long: $('duo-long'),
+    longG: $('duo-long-g'),
 
     inviteIn: $('duo-invite-in'),
     joinGo: $('duo-join-go'),
@@ -185,6 +190,65 @@
 
   const inviteLink = (code) => location.href.split('#')[0] + '#j=' + code;
 
+  /* ---------- Codici: scrittura compatta o lunga ---------- */
+
+  // Compatto e lungo sono due scritture dello stesso SDP, quindi la casella può
+  // essere spuntata anche *dopo* aver generato il codice: si ricodifica e basta,
+  // senza rifare la connessione. (Prima non era così e la casella non faceva
+  // nulla se spuntata a codice già generato.)
+  function renderInvite() {
+    if (!duo.transport || !duo.transport.describe) return;
+    const code = duo.transport.describe(el.long.checked);
+    if (code) el.invite.value = inviteLink(code);
+  }
+
+  function renderAnswer() {
+    if (!duo.transport || !duo.transport.describe) return;
+    const code = duo.transport.describe(el.longG.checked);
+    if (code) el.answerOut.value = code;
+  }
+
+  // Senza un indirizzo raggiungibile da fuori il codice vale solo dentro la
+  // stessa rete: meglio dirlo prima di mandarlo, invece di lasciare che il
+  // collegamento fallisca senza spiegazioni.
+  function localOnlyWarning() {
+    const s = duo.transport && duo.transport.summary && duo.transport.summary();
+    if (!s || s.routable > 0) return null;
+    return 'Non ho trovato un indirizzo pubblico: questo codice funzionerà solo se '
+      + 'siete sulla stessa rete Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+  }
+
+  /* ---------- Freschezza dell'invito ---------- */
+
+  // Il varco che il router apre verso l'esterno si chiude dopo poco se non passa
+  // traffico: un invito mandato e aperto qualche minuto dopo può non collegarsi
+  // più. Non possiamo tenerlo aperto, ma possiamo dire quanti secondi ha.
+  function startInviteAge() {
+    stopInviteAge();
+    duo.inviteAt = Date.now();
+    renderInviteAge();
+    duo.ageId = setInterval(renderInviteAge, 1000);
+  }
+
+  function stopInviteAge() {
+    clearInterval(duo.ageId);
+    duo.ageId = null;
+  }
+
+  function renderInviteAge() {
+    if (!el.inviteAge) return;
+    const sec = Math.floor((Date.now() - duo.inviteAt) / 1000);
+    if (sec < 60) {
+      el.inviteAge.textContent = `Invito appena creato (${sec}s) — è il momento buono.`;
+      el.inviteAge.className = 'duo__age duo__age--fresh';
+    } else {
+      const min = Math.floor(sec / 60);
+      el.inviteAge.textContent = `Invito creato ${min} ${min === 1 ? 'minuto' : 'minuti'} fa: `
+        + 'se non si collega, generane uno nuovo.';
+      el.inviteAge.className = 'duo__age duo__age--stale';
+    }
+  }
+
   /* ---------- Collegamento ---------- */
 
   function attach(transport) {
@@ -196,6 +260,7 @@
   function onTransportState(st) {
     if (st === 'open') {
       duo.lastSeen = Date.now();
+      stopInviteAge(); // collegati: l'età dell'invito non conta più
       startHeartbeat();
       if (duo.role === 'guest') {
         send({ t: 'hello', proto: PROTO, name: duo.name });
@@ -244,17 +309,31 @@
     showStep('host');
     el.answerIn.parentElement.hidden = false;
     el.invite.value = '';
-    setStatus(el.hostStatus, 'Preparo l’invito…');
+    el.inviteAge.textContent = '';
+    setStatus(el.hostStatus, 'Cerco un percorso di rete…');
     try {
       const transport = Net.RTCTransport();
       attach(transport);
-      const code = await transport.createInvite(el.long.checked);
-      el.invite.value = inviteLink(code);
-      setStatus(el.hostStatus, 'Manda il link all’avversario, poi incolla qui il '
-        + 'codice di risposta che ti rimanda.');
+      await transport.createInvite((type) => {
+        if (type === 'srflx' || type === 'relay') {
+          setStatus(el.hostStatus, 'Indirizzo pubblico trovato, preparo l’invito…');
+        }
+      });
+      renderInvite();
+      startInviteAge();
+      const warn = localOnlyWarning();
+      setStatus(el.hostStatus, warn || 'Manda il link all’avversario, poi incolla qui il '
+        + 'codice di risposta che ti rimanda.', warn ? 'bad' : null);
     } catch (err) {
       setStatus(el.hostStatus, 'Non riesco a preparare l’invito: ' + err.message, 'bad');
     }
+  }
+
+  async function regenerateInvite() {
+    stopInviteAge();
+    if (duo.transport) { duo.transport.close(); duo.transport = null; }
+    el.answerIn.value = '';
+    await createMatch();
   }
 
   async function acceptAnswer() {
@@ -303,12 +382,19 @@
       return;
     }
     const code = raw.includes('#j=') ? raw.split('#j=')[1].trim() : raw;
-    setStatus(el.guestStatus, 'Preparo la risposta…');
+    setStatus(el.guestStatus, 'Cerco un percorso di rete…');
     try {
       const transport = Net.RTCTransport();
       attach(transport);
-      el.answerOut.value = await transport.joinWithInvite(code, el.long.checked);
-      setStatus(el.guestStatus, 'Rimanda questo codice all’avversario e aspetta il via.');
+      await transport.joinWithInvite(code, (type) => {
+        if (type === 'srflx' || type === 'relay') {
+          setStatus(el.guestStatus, 'Indirizzo pubblico trovato, preparo la risposta…');
+        }
+      });
+      renderAnswer();
+      const warn = localOnlyWarning();
+      setStatus(el.guestStatus, warn || 'Rimanda subito questo codice all’avversario '
+        + 'e aspetta il via.', warn ? 'bad' : null);
     } catch (err) {
       setStatus(el.guestStatus, 'Invito non valido: ' + err.message, 'bad');
     }
@@ -717,6 +803,7 @@
     clearInterval(duo.watchId);
     clearInterval(duo.countId);
     clearTimeout(duo.settleId);
+    stopInviteAge();
     if (duo.transport) duo.transport.close();
     duo.transport = null;
     duo.phase = 'idle';
@@ -790,13 +877,18 @@
 
   el.inviteCopy.addEventListener('click', () => copyText(el.invite.value, el.invite));
   el.inviteShare.addEventListener('click', () => shareText(el.invite.value, el.invite));
+  el.inviteNew.addEventListener('click', regenerateInvite);
   el.answerOk.addEventListener('click', acceptAnswer);
-  el.hostBack.addEventListener('click', () => { leaveDuel(false); showStep('menu'); });
+  el.hostBack.addEventListener('click', () => { stopInviteAge(); leaveDuel(false); showStep('menu'); });
 
   el.joinGo.addEventListener('click', generateAnswer);
   el.answerCopy.addEventListener('click', () => copyText(el.answerOut.value, el.answerOut));
   el.answerShare.addEventListener('click', () => shareText(el.answerOut.value, el.answerOut));
   el.guestBack.addEventListener('click', () => { leaveDuel(false); showStep('menu'); });
+
+  // La scelta compatto/lungo si applica al codice già mostrato, senza rigenerarlo
+  el.long.addEventListener('change', renderInvite);
+  el.longG.addEventListener('change', renderAnswer);
 
   el.codeGo.addEventListener('click', startFromCode);
   el.codeCopy.addEventListener('click', () => copyText(el.codeCurrent.value, el.codeCurrent));

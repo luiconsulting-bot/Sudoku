@@ -165,23 +165,70 @@
     { urls: 'stun:stun.cloudflare.com:3478' },
   ];
 
+  // Quali candidati contiene un SDP. Serve a sapere *prima* di condividere un
+  // codice se quel codice ha qualche speranza di funzionare fuori dalla LAN.
+  function candidateSummary(sdp) {
+    const out = { host: 0, srflx: 0, prflx: 0, relay: 0, mdns: 0 };
+    const re = /^a=candidate:\S+ (\d+) udp \d+ (\S+) \d+ typ (\w+)/gim;
+    let m;
+    while ((m = re.exec(sdp)) !== null) {
+      if (m[1] !== '1') continue;
+      const type = m[3].toLowerCase();
+      if (type in out) out[type]++;
+      if (/\.local$/i.test(m[2])) out.mdns++;
+    }
+    // Un candidato "raggiungibile da fuori" è ciò che permette a due dispositivi
+    // su reti diverse di trovarsi. Gli host (e ancor più quelli mDNS `.local`)
+    // valgono solo dentro la stessa rete.
+    out.routable = out.srflx + out.relay + out.prflx;
+    return out;
+  }
+
   // I candidati vanno tutti dentro il codice: non c'è un canale per mandarne
-  // altri dopo, quindi aspettiamo la fine della raccolta. Con un tetto, perché
-  // su alcune reti lo stato `complete` non arriva mai.
-  function waitForIce(pc, timeoutMs) {
+  // altri dopo, quindi bisogna attendere la raccolta prima di mostrarlo.
+  //
+  // Attenzione al compromesso: su molte reti `iceGatheringState` non diventa
+  // mai `complete` (lo STUN non risponde e la raccolta resta aperta), quindi un
+  // tetto serve — ma se il tetto è troppo basso si finisce per pubblicare un
+  // codice con soli candidati locali, che tra due dispositivi diversi non
+  // funzionerà mai. Perciò: si esce presto appena si ha un indirizzo pubblico,
+  // e solo in mancanza di quello si aspetta fino in fondo.
+  function waitForIce(pc, opts = {}) {
+    const maxMs = opts.maxMs || 10000;
+    const graceMs = opts.graceMs || 500;
+    const onProgress = opts.onProgress;
+
     return new Promise((resolve) => {
       if (pc.iceGatheringState === 'complete') return resolve();
       let done = false;
+      let grace = null;
+
       const finish = () => {
         if (done) return;
         done = true;
-        clearTimeout(timer);
+        clearTimeout(hard);
+        clearTimeout(grace);
         pc.removeEventListener('icegatheringstatechange', onChange);
+        pc.removeEventListener('icecandidate', onCandidate);
         resolve();
       };
+
+      const onCandidate = (e) => {
+        if (!e.candidate) return finish(); // null = raccolta conclusa
+        const type = (/ typ (\w+)/.exec(e.candidate.candidate) || [])[1];
+        if (onProgress) onProgress(type);
+        if (type === 'srflx' || type === 'relay') {
+          // Abbiamo un indirizzo raggiungibile da fuori: un attimo per
+          // raccoglierne altri e poi basta, senza aspettare il tetto.
+          clearTimeout(grace);
+          grace = setTimeout(finish, graceMs);
+        }
+      };
+
       const onChange = () => { if (pc.iceGatheringState === 'complete') finish(); };
-      const timer = setTimeout(finish, timeoutMs || 3000);
+      const hard = setTimeout(finish, maxMs);
       pc.addEventListener('icegatheringstatechange', onChange);
+      pc.addEventListener('icecandidate', onCandidate);
     });
   }
 
@@ -221,11 +268,11 @@
       onStateChange(fn) { handlers.state = fn; setState('connecting'); },
 
       // Host: crea l'offerta e restituisce il codice di invito
-      async createInvite(useLong) {
+      async createInvite(onProgress) {
         bindChannel(pc.createDataChannel('sudoku', { ordered: true }));
         await pc.setLocalDescription(await pc.createOffer());
-        await waitForIce(pc);
-        return encodeDesc(pc.localDescription.sdp, useLong);
+        await waitForIce(pc, { onProgress });
+        return pc.localDescription.sdp;
       },
 
       // Host: applica la risposta del guest e la connessione si apre
@@ -233,12 +280,24 @@
         await pc.setRemoteDescription({ type: 'answer', sdp: decodeDesc(code) });
       },
 
-      // Guest: applica l'invito e restituisce il codice di risposta
-      async joinWithInvite(code, useLong) {
+      // Guest: applica l'invito e restituisce l'SDP della risposta
+      async joinWithInvite(code, onProgress) {
         await pc.setRemoteDescription({ type: 'offer', sdp: decodeDesc(code) });
         await pc.setLocalDescription(await pc.createAnswer());
-        await waitForIce(pc);
+        await waitForIce(pc, { onProgress });
+        return pc.localDescription.sdp;
+      },
+
+      // Compatto o lungo sono due *scritture* dello stesso SDP: passare da una
+      // all'altra non richiede di rinegoziare nulla, basta ricodificare.
+      describe(useLong) {
+        if (!pc.localDescription) return '';
         return encodeDesc(pc.localDescription.sdp, useLong);
+      },
+
+      // Che tipo di indirizzi contiene il nostro codice
+      summary() {
+        return pc.localDescription ? candidateSummary(pc.localDescription.sdp) : null;
       },
 
       send(msg) {
@@ -264,6 +323,7 @@
     decodeDesc,
     compactSdp,
     expandSdp,
+    candidateSummary,
     supported: typeof RTCPeerConnection === 'function',
   };
 })();
