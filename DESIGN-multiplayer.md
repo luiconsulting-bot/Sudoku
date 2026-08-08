@@ -471,7 +471,24 @@ Deciso per necessità, emerso solo scrivendo il codice:
 8. **Ripiego automatico sul codice lungo.** Se un SDP non ha candidati utilizzabili
    la codifica compatta non è affidabile: si emette direttamente il codice lungo
    invece di produrne uno rotto. Resta anche la casella per forzarlo a mano.
-9. **Nessuna statistica nella prova su due schede.** Le due schede condividono il
+9. **Il codice va letto con tolleranza, l'attesa dei candidati con pazienza.**
+   Da una prova reale tra due telefoni sono emersi due errori di progetto miei.
+   Il primo: l'attesa dei candidati ICE si fermava a 3 secondi, e la misura dice
+   che su molte reti la raccolta non è ancora finita — anzi `iceGatheringState`
+   spesso non diventa mai `complete`. Allo scadere veniva pubblicato un codice
+   con soli candidati mDNS `.local`, inservibile tra dispositivi diversi: un
+   invito nato morto. Ora si esce appena c'è un indirizzo pubblico, altrimenti si
+   attende molto più a lungo, e se alla fine non c'è nulla di raggiungibile lo si
+   dice invece di far fallire il collegamento in silenzio.
+   Il secondo: il prefisso del codice era confrontato con `startsWith('S1:')`,
+   sensibile alle maiuscole. La tastiera dell'iPhone lo aveva reso `s1:` e il
+   codice veniva rifiutato con un messaggio fuorviante. Il payload è base64url e
+   resta sensibile alle maiuscole, ma tutto il resto ora è tollerante: prefisso
+   in qualunque caso, spazi e capi di riga, codice dentro un link o dentro una
+   frase. Con una precedenza importante: prima il codice come token a sé, poi il
+   ripiego a spazi rimossi — invertendole, un codice incollato dentro una frase
+   si incollerebbe alle parole vicine e si corromperebbe.
+10. **Nessuna statistica nella prova su due schede.** Le due schede condividono il
    `localStorage`: la stessa partita verrebbe contata sia come vittoria sia come
    sconfitta, e la seconda scrittura cancellerebbe la prima. In modalità di prova
    non si registra nulla, e la nota nella lobby lo dice. Su due dispositivi reali

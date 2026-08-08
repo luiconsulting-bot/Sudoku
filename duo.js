@@ -43,6 +43,9 @@
     watchId: null,
     ageId: null,          // aggiorna l'età dell'invito mostrata all'host
     inviteAt: 0,
+    answering: false,     // risposta in preparazione (evita doppioni da input+click)
+    answeredFor: null,    // payload dell'invito per cui la risposta è già pronta
+    connecting: false,
     lastSeen: 0,
     lostAsked: false,
     rematchMine: false,
@@ -337,16 +340,24 @@
   }
 
   async function acceptAnswer() {
-    const code = el.answerIn.value.trim();
-    if (!code) {
+    if (duo.connecting) return;
+    const code = el.answerIn.value;
+    if (!Net.extractCode(code)) {
       setStatus(el.hostStatus, 'Incolla il codice di risposta dell’avversario.', 'bad');
       return;
     }
+    if (!duo.transport || !duo.transport.acceptAnswer) {
+      setStatus(el.hostStatus, 'L’invito non è più valido: generane uno nuovo.', 'bad');
+      return;
+    }
+    duo.connecting = true;
     setStatus(el.hostStatus, 'Collego…');
     try {
       await duo.transport.acceptAnswer(code);
     } catch (err) {
       setStatus(el.hostStatus, 'Codice di risposta non valido: ' + err.message, 'bad');
+    } finally {
+      duo.connecting = false;
     }
   }
 
@@ -370,18 +381,36 @@
     el.answerOut.parentElement.hidden = false;
     if (prefilled) el.inviteIn.value = prefilled;
     el.answerOut.value = '';
-    setStatus(el.guestStatus, prefilled
-      ? 'Invito ricevuto: premi «Genera risposta».'
-      : 'Incolla il link o il codice che ti ha mandato l’avversario.');
+
+    // Arrivando da un link l'invito c'è già: generare la risposta da soli evita
+    // un passaggio manuale che non aggiunge nulla.
+    if (prefilled && Net.extractCode(prefilled)) {
+      setStatus(el.guestStatus, 'Invito ricevuto, preparo la risposta…');
+      generateAnswer();
+      return;
+    }
+    setStatus(el.guestStatus, 'Incolla il link o il codice che ti ha mandato l’avversario.');
   }
 
   async function generateAnswer() {
-    const raw = el.inviteIn.value.trim();
-    if (!raw) {
-      setStatus(el.guestStatus, 'Incolla prima il link o il codice dell’invito.', 'bad');
+    const code = el.inviteIn.value;
+    const found = Net.extractCode(code);
+    if (!found) {
+      setStatus(el.guestStatus, 'Incolla il link o il codice dell’invito.', 'bad');
       return;
     }
-    const code = raw.includes('#j=') ? raw.split('#j=')[1].trim() : raw;
+    if (duo.answering) return;
+
+    // Una risposta vale per un invito solo. Rigenerarla per lo stesso invito
+    // renderebbe inutile quella già mandata all'avversario.
+    if (duo.transport && duo.answeredFor === found.payload) {
+      setStatus(el.guestStatus, 'La risposta è già pronta qui sotto: rimandala all’avversario.');
+      return;
+    }
+    if (duo.transport) { duo.transport.close(); duo.transport = null; } // invito diverso
+
+    duo.answering = true;
+    duo.answeredFor = found.payload;
     setStatus(el.guestStatus, 'Cerco un percorso di rete…');
     try {
       const transport = Net.RTCTransport();
@@ -392,11 +421,18 @@
         }
       });
       renderAnswer();
+      // Invito servito: solo ora si può ripulire l'URL. Toglierlo prima significa
+      // perderlo se il telefono ricarica o ripristina la pagina dalla cache.
+      if (/[#&]j=/.test(location.hash)) {
+        history.replaceState(null, '', location.pathname + location.search);
+      }
       const warn = localOnlyWarning();
       setStatus(el.guestStatus, warn || 'Rimanda subito questo codice all’avversario '
         + 'e aspetta il via.', warn ? 'bad' : null);
     } catch (err) {
       setStatus(el.guestStatus, 'Invito non valido: ' + err.message, 'bad');
+    } finally {
+      duo.answering = false;
     }
   }
 
@@ -890,6 +926,17 @@
   el.long.addEventListener('change', renderInvite);
   el.longG.addEventListener('change', renderAnswer);
 
+  // Su un telefono ogni tocco in più è attrito: appena nel campo compare un
+  // codice valido si procede da soli, senza aspettare la pressione del pulsante.
+  el.inviteIn.addEventListener('input', () => {
+    if (Net.extractCode(el.inviteIn.value)) generateAnswer();
+  });
+
+  el.answerIn.addEventListener('input', () => {
+    if (duo.connecting) return;
+    if (Net.extractCode(el.answerIn.value)) acceptAnswer();
+  });
+
   el.codeGo.addEventListener('click', startFromCode);
   el.codeCopy.addEventListener('click', () => copyText(el.codeCurrent.value, el.codeCurrent));
   el.codeBack.addEventListener('click', () => showStep('menu'));
@@ -923,18 +970,26 @@
 
   // La partita in solitaria dietro l'overlay resta quella che era: chi chiude la
   // lobby senza collegarsi trova il suo Sudoku dove l'aveva lasciato.
+  let handledInvite = null;
+
   function maybeJoinFromHash() {
-    const hash = location.hash || '';
-    if (!hash.startsWith('#j=')) return;
-    const code = hash.slice(3);
-    history.replaceState(null, '', location.pathname + location.search);
+    const m = /[#&]j=([^&\s]+)/.exec(location.hash || '');
+    if (!m) return;
+    const code = m[1];
+    if (code === handledInvite) return; // già preso in carico: non ripetere
+    handledInvite = code;
     if (duo.transport) leaveDuel(true); // un nuovo invito sostituisce il precedente
     openLobby();
     joinMatch(code);
   }
 
-  // Aprire un invito con il gioco già aperto cambia solo il frammento dell'URL:
-  // il browser non ricarica la pagina, quindi l'evento va intercettato a parte.
+  // Tre strade portano qui, e servono tutte tre:
+  //  · caricamento normale del link;
+  //  · `hashchange`, perché con il gioco già aperto un invito cambia solo il
+  //    frammento e il browser non ricarica nulla;
+  //  · `pageshow`, perché iOS può ripristinare la pagina dalla cache
+  //    avanti/indietro senza rieseguire lo script.
   window.addEventListener('hashchange', maybeJoinFromHash);
+  window.addEventListener('pageshow', maybeJoinFromHash);
   maybeJoinFromHash();
 })();

@@ -41,8 +41,15 @@ nessun dato passa da terzi. In cambio, l'invito va scambiato una volta a mano:
 
 1. Chi crea la partita preme **Crea una partita** e manda il **link** con
    «Condividi» (WhatsApp, Telegram, quello che vuoi).
-2. Chi lo riceve apre il link, preme **Genera risposta** e **rimanda il codice**.
-3. Il primo lo incolla, preme **Collega** e parte il countdown.
+2. Chi lo riceve **apre il link**: la risposta si prepara da sé, basta
+   rimandarla con «Condividi».
+3. Il primo la **incolla** e il countdown parte da solo.
+
+Non serve premere nulla oltre a questo: i pulsanti «Genera risposta» e
+«Collega» restano come rete di sicurezza, se un incolla non viene rilevato.
+Il codice viene riconosciuto anche dentro un link o una frase, con spazi o capi
+di riga in mezzo, e con il prefisso in minuscolo — perché le tastiere dei
+telefoni lo «correggono» volentieri.
 
 Lo scambio si paga **una volta per sessione**: la **rivincita** riusa lo stesso
 collegamento, senza ricominciare da capo.

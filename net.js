@@ -117,14 +117,49 @@
     return PREFIX_LONG + b64urlEncode(sdp);
   }
 
+  // Estrae il codice da quello che l'utente ha incollato, che nella realtà è
+  // raramente il codice nudo: può essere un link intero, avere spazi o capi di
+  // riga aggiunti dalla chat, ed è normale che la tastiera del telefono
+  // "corregga" il prefisso in minuscolo. Il payload invece resta come è: è
+  // base64url, dove maiuscole e minuscole contano.
+  const CODE_RE = /S1(L?):([A-Za-z0-9_-]{16,})/i;
+  const asCandidate = (m) => ({ long: m[1].toUpperCase() === 'L', payload: m[2] });
+
+  function codeCandidates(text) {
+    const s = String(text || '');
+    const out = [];
+
+    // Prima il codice come token a sé: il payload finisce dove finiscono i
+    // caratteri ammessi, quindi un codice incollato *dentro una frase* non si
+    // porta dietro le parole che lo seguono.
+    const direct = CODE_RE.exec(s);
+    if (direct) out.push(asCandidate(direct));
+
+    // Poi il ripiego per il codice spezzato su più righe da chi l'ha inoltrato:
+    // qui gli spazi vanno tolti, ma solo come seconda ipotesi perché su una
+    // frase intera incollerebbe il codice al testo vicino.
+    const flat = CODE_RE.exec(s.replace(/\s+/g, ''));
+    if (flat && (!direct || flat[2] !== direct[2])) out.push(asCandidate(flat));
+
+    return out;
+  }
+
+  const extractCode = (text) => codeCandidates(text)[0] || null;
+
   function decodeDesc(code) {
-    const clean = String(code || '').trim().replace(/\s+/g, '');
-    if (!clean) throw new Error('codice vuoto');
-    if (clean.startsWith(PREFIX_LONG)) return b64urlDecode(clean.slice(PREFIX_LONG.length));
-    if (clean.startsWith(PREFIX_COMPACT)) {
-      return expandSdp(JSON.parse(b64urlDecode(clean.slice(PREFIX_COMPACT.length))));
+    const candidates = codeCandidates(code);
+    if (candidates.length === 0) {
+      throw new Error(String(code || '').trim()
+        ? 'in quello che hai incollato non trovo un codice del gioco'
+        : 'codice vuoto');
     }
-    throw new Error('il codice non sembra un invito di questo gioco');
+    for (const c of candidates) {
+      try {
+        return c.long ? b64urlDecode(c.payload)
+          : expandSdp(JSON.parse(b64urlDecode(c.payload)));
+      } catch { /* si prova l'ipotesi successiva */ }
+    }
+    throw new Error('il codice sembra incompleto o alterato: rifallo copiare per intero');
   }
 
   /* ---------- Trasporto locale (due schede dello stesso browser) ---------- */
@@ -321,6 +356,7 @@
     RTCTransport,
     encodeDesc,
     decodeDesc,
+    extractCode,
     compactSdp,
     expandSdp,
     candidateSummary,
