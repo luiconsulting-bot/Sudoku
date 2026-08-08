@@ -546,6 +546,11 @@ body {
 }
 .duo__check input { flex: none; margin-top: 2px; }
 
+/* Referto degli indirizzi trovati e versione in uso */
+.duo__net { margin: 6px 0 0; font-size: 0.74rem; color: var(--text-muted); }
+.duo__net--warn { color: var(--gold); font-weight: 600; }
+.app__version { margin: 4px 0 0; font-size: 0.7rem; opacity: 0.55; }
+
 /* Età dell'invito: il varco aperto nel router non dura per sempre */
 .duo__age { margin: 6px 0 0; font-size: 0.75rem; font-weight: 600; }
 .duo__age--fresh { color: var(--success); }

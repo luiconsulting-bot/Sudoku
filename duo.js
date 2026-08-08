@@ -18,6 +18,7 @@
   const SILENCE_LOST_MS = 20000; // oltre questo chiediamo cosa fare
   const COUNTDOWN_FROM = 3;
   const SETTLE_WAIT_MS = 1500;   // attesa per un arrivo quasi in contemporanea
+  const HANDSHAKE_TIMEOUT_MS = 25000; // oltre questo il collegamento non ci sarà
 
   /* ---------- Stato del duello ---------- */
 
@@ -41,6 +42,7 @@
     hbId: null,
     progId: null,
     watchId: null,
+    handshakeId: null,    // sorveglia che il collegamento si apra davvero
     ageId: null,          // aggiorna l'età dell'invito mostrata all'host
     inviteAt: 0,
     answering: false,     // risposta in preparazione (evita doppioni da input+click)
@@ -82,6 +84,9 @@
     answerIn: $('duo-answer-in'),
     answerOk: $('duo-answer-ok'),
     hostStatus: $('duo-host-status'),
+    hostNet: $('duo-host-net'),
+    guestNet: $('duo-guest-net'),
+    version: $('duo-version'),
     hostBack: $('duo-host-back'),
     long: $('duo-long'),
     longG: $('duo-long-g'),
@@ -126,6 +131,7 @@
   if (!el.open || !el.overlay) return; // pagina senza la UI del multiplayer
 
   let slots = null;
+  if (el.version) el.version.textContent = S.APP_VERSION;
 
   /* ---------- Utilità ---------- */
 
@@ -215,10 +221,27 @@
   // stessa rete: meglio dirlo prima di mandarlo, invece di lasciare che il
   // collegamento fallisca senza spiegazioni.
   function localOnlyWarning() {
-    const s = duo.transport && duo.transport.summary && duo.transport.summary();
+    const s = netSummary();
     if (!s || s.routable > 0) return null;
     return 'Non ho trovato un indirizzo pubblico: questo codice funzionerà solo se '
       + 'siete sulla stessa rete Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+  }
+
+  const netSummary = () =>
+    (duo.transport && duo.transport.summary ? duo.transport.summary() : null);
+
+  // Referto in chiaro degli indirizzi trovati. Serve a chi prova: «0 pubblici»
+  // e «2 pubblici» sono due problemi diversi con due rimedi diversi, e senza
+  // vederlo scritto non c'è modo di distinguerli da fuori.
+  function renderNet(node) {
+    if (!node) return;
+    const s = netSummary();
+    if (!s) { node.textContent = ''; return; }
+    const parti = [];
+    if (s.routable) parti.push(`${s.routable} pubblic${s.routable === 1 ? 'o' : 'i'}`);
+    if (s.host) parti.push(`${s.host} local${s.host === 1 ? 'e' : 'i'}${s.mdns ? ' (mDNS)' : ''}`);
+    node.textContent = `Indirizzi trovati: ${parti.join(' · ') || 'nessuno'}.`;
+    node.className = 'duo__net' + (s.routable ? '' : ' duo__net--warn');
   }
 
   /* ---------- Freschezza dell'invito ---------- */
@@ -264,6 +287,7 @@
     if (st === 'open') {
       duo.lastSeen = Date.now();
       stopInviteAge(); // collegati: l'età dell'invito non conta più
+      clearTimeout(duo.handshakeId);
       startHeartbeat();
       if (duo.role === 'guest') {
         send({ t: 'hello', proto: PROTO, name: duo.name });
@@ -324,6 +348,7 @@
       });
       renderInvite();
       startInviteAge();
+      renderNet(el.hostNet);
       const warn = localOnlyWarning();
       setStatus(el.hostStatus, warn || 'Manda il link all’avversario, poi incolla qui il '
         + 'codice di risposta che ti rimanda.', warn ? 'bad' : null);
@@ -334,9 +359,13 @@
 
   async function regenerateInvite() {
     stopInviteAge();
+    clearTimeout(duo.handshakeId);
     if (duo.transport) { duo.transport.close(); duo.transport = null; }
     el.answerIn.value = '';
     await createMatch();
+    // Trappola da segnalare: la risposta calcolata sull'invito precedente non
+    // vale più per questo, e chi l'ha già ricevuto sta guardando un link morto.
+    S.showToast('Invito nuovo: rimanda il link, quello di prima non vale più');
   }
 
   async function acceptAnswer() {
@@ -354,11 +383,31 @@
     setStatus(el.hostStatus, 'Collego…');
     try {
       await duo.transport.acceptAnswer(code);
+      watchHandshake(el.hostStatus);
     } catch (err) {
       setStatus(el.hostStatus, 'Codice di risposta non valido: ' + err.message, 'bad');
     } finally {
       duo.connecting = false;
     }
+  }
+
+  // Il codice accettato non significa collegamento riuscito: l'attraversamento
+  // della rete può non riuscire mai, e senza questo controllo la schermata
+  // resterebbe su «Collego…» per sempre. Passato il tempo, si dice cosa è
+  // andato storto — distinguendo i due casi, che hanno rimedi diversi.
+  function watchHandshake(node) {
+    clearTimeout(duo.handshakeId);
+    duo.handshakeId = setTimeout(() => {
+      if (duo.phase !== 'connecting' || !duo.transport) return; // già partito
+      const s = netSummary();
+      const senzaPubblico = !s || s.routable === 0;
+      setStatus(node, senzaPubblico
+        ? 'Nessun collegamento. Il tuo telefono non ha esposto un indirizzo pubblico: '
+          + 'mettetevi sulla stessa rete Wi-Fi e riprovate.'
+        : 'Nessun collegamento. Gli indirizzi c’erano, ma la rete non lascia passare '
+          + 'il collegamento diretto: è tipico della rete mobile. Provate sulla stessa '
+          + 'Wi-Fi, oppure usate «Sfida con un codice».', 'bad');
+    }, HANDSHAKE_TIMEOUT_MS);
   }
 
   async function joinMatch(prefilled) {
@@ -421,6 +470,7 @@
         }
       });
       renderAnswer();
+      renderNet(el.guestNet);
       // Invito servito: solo ora si può ripulire l'URL. Toglierlo prima significa
       // perderlo se il telefono ricarica o ripristina la pagina dalla cache.
       if (/[#&]j=/.test(location.hash)) {
@@ -429,6 +479,7 @@
       const warn = localOnlyWarning();
       setStatus(el.guestStatus, warn || 'Rimanda subito questo codice all’avversario '
         + 'e aspetta il via.', warn ? 'bad' : null);
+      watchHandshake(el.guestStatus); // se non si apre nulla, dirlo invece di tacere
     } catch (err) {
       setStatus(el.guestStatus, 'Invito non valido: ' + err.message, 'bad');
     } finally {
@@ -839,6 +890,7 @@
     clearInterval(duo.watchId);
     clearInterval(duo.countId);
     clearTimeout(duo.settleId);
+    clearTimeout(duo.handshakeId);
     stopInviteAge();
     if (duo.transport) duo.transport.close();
     duo.transport = null;

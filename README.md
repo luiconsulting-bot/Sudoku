@@ -70,6 +70,22 @@ cifre** — più tempo, celle completate, errori e aiuti. Se la connessione cade
 scegliere tra **vittoria a tavolino** e **finire il puzzle da solo**: una rete
 caduta non ti costa la partita.
 
+### Se non si collega
+
+Sotto il codice compare il **referto degli indirizzi** trovati, e dice quale dei
+due problemi hai davanti:
+
+- **«nessun indirizzo pubblico»** → il tuo telefono non è raggiungibile da fuori:
+  mettetevi sulla **stessa rete Wi-Fi**.
+- **indirizzi pubblici presenti, ma nessun collegamento dopo ~25 secondi** → la
+  rete non lascia passare il traffico diretto. È il caso tipico della **rete
+  mobile**, dove gli operatori usano un NAT che il peer-to-peer non attraversa:
+  nessun numero di tentativi lo risolve, serve la Wi-Fi o la sfida con codice.
+
+A fondo pagina c'è la **versione** in uso: deve essere la stessa sui due telefoni.
+Se dopo un aggiornamento vedi ancora quella vecchia, il telefono sta servendo una
+copia in cache — chiudi e riapri la scheda.
+
 ### 🎯 Sfida con un codice (senza collegamento)
 
 Se il collegamento diretto non riesce — succede su alcune reti mobili o aziendali,

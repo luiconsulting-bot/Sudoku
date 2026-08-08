@@ -12,6 +12,12 @@ const DIFFICULTY = {
   esperto:   { remove: 58, label: 'Esperto' },
 };
 
+// Versione mostrata a fondo pagina. Va tenuta uguale al `?v=` dei tag <script>
+// e <link> in index.html: quel parametro è ciò che costringe telefoni e proxy a
+// riscaricare i file invece di riusare una copia vecchia in cache, e il numero a
+// schermo è ciò che permette di sapere quale build sta davvero girando.
+const APP_VERSION = '2026.08.08-4';
+
 const MAX_MISTAKES = 3;
 const MAX_HINTS = 3;
 
@@ -1351,6 +1357,9 @@ window.addEventListener('beforeunload', saveGame);
 
 /* ---------- Avvio ---------- */
 
+const $version = document.getElementById('app-version');
+if ($version) $version.textContent = APP_VERSION;
+
 buildNumpad();
 if (restoreGame()) {
   showToast('Partita ripresa da dove l’avevi lasciata');
@@ -1361,6 +1370,7 @@ if (restoreGame()) {
 /* ---------- Interfaccia per il multiplayer (duo.js) ---------- */
 
 window.Sudoku = {
+  APP_VERSION,
   DIFFICULTY,
   MAX_MISTAKES,
   MAX_HINTS,

@@ -7,7 +7,7 @@
   <meta name="description" content="Gioca a Sudoku nel browser: quattro livelli di difficoltà, note, suggerimenti, timer e record personali." />
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Cg stroke='white' stroke-width='6' opacity='.9'%3E%3Cpath d='M36 12v76M64 12v76M12 36h76M12 64h76'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2026.08.08-4" />
 </head>
 <body>
   <div class="app">
@@ -103,6 +103,7 @@
     <footer class="app__footer">
       <p>Tasti: <kbd>1</kbd>–<kbd>9</kbd> inserisci · <kbd>N</kbd> note · <kbd>H</kbd> aiuto · <kbd>Z</kbd> annulla · <kbd>P</kbd> pausa</p>
       <p class="app__save-hint">La partita viene salvata automaticamente: puoi chiudere e riprendere quando vuoi.</p>
+      <p class="app__version">versione <span id="app-version">—</span></p>
     </footer>
   </div>
 
@@ -204,6 +205,7 @@
             <button id="duo-invite-copy" class="btn btn--ghost">Copia</button>
           </div>
           <p id="duo-invite-age" class="duo__age"></p>
+          <p id="duo-host-net" class="duo__net"></p>
         </div>
         <div class="duo__field">
           <span class="field__label">2. Incolla il codice di risposta che ti rimanda</span>
@@ -232,6 +234,8 @@
             Codice lungo: serve solo se l’altro riceve «codice non valido».
             Non cambia nulla se il problema è il collegamento.
           </label>
+          <p class="duo__net">Versione in uso: <strong id="duo-version">—</strong>.
+            Deve essere la stessa su entrambi i telefoni.</p>
         </details>
 
         <button id="duo-invite-new" class="btn btn--ghost btn--block">Genera un nuovo invito</button>
@@ -258,6 +262,7 @@
           </div>
         </div>
         <p id="duo-guest-status" class="duo__status"></p>
+        <p id="duo-guest-net" class="duo__net"></p>
         <label class="duo__check">
           <input type="checkbox" id="duo-long-g" />
           Codice lungo: usalo se l’altro ti dice «codice non valido».
@@ -313,8 +318,8 @@
     </div>
   </div>
 
-  <script src="net.js"></script>
-  <script src="script.js"></script>
-  <script src="duo.js"></script>
+  <script src="net.js?v=2026.08.08-4"></script>
+  <script src="script.js?v=2026.08.08-4"></script>
+  <script src="duo.js?v=2026.08.08-4"></script>
 </body>
 </html>
