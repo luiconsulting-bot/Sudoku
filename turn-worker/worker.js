@@ -21,7 +21,12 @@ const CF_API = 'https://rtc.live.cloudflare.com/v1/turn/keys';
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
-    const allowed = env.ALLOWED_ORIGIN || '';
+
+    // `Origin` contiene solo schema e dominio, mai il percorso: un
+    // ALLOWED_ORIGIN scritto come "https://tizio.github.io/Sudoku" non
+    // combacerebbe mai e rifiuterebbe tutto con un 403 difficile da capire.
+    // Si normalizza invece di punire una svista prevedibile.
+    const allowed = normalizeOrigin(env.ALLOWED_ORIGIN);
 
     // Un'origine dichiarata è un filtro utile contro l'uso casuale da altri
     // siti, non una barriera di sicurezza: l'intestazione Origin la manda il
@@ -90,6 +95,17 @@ export default {
     }
   },
 };
+
+// "https://tizio.github.io/Sudoku/" → "https://tizio.github.io"
+function normalizeOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, ''); // non è un URL intero: si toglie solo la barra
+  }
+}
 
 function json(body, status, headers) {
   return new Response(JSON.stringify(body), {

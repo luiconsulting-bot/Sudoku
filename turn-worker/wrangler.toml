@@ -7,8 +7,9 @@ compatibility_date = "2026-01-01"
 # "Token ID" o "App ID"): non è segreto, può stare qui
 TURN_KEY_ID = ""
 
-# Origine da cui viene aperto il gioco. Deve corrispondere esattamente,
-# schema compreso. Vuoto = qualunque origine (sconsigliato).
+# Origine da cui viene aperto il gioco: schema e dominio, SENZA il percorso
+# della pagina — il browser dichiara solo quello. Un eventuale percorso viene
+# comunque ignorato. Vuoto = qualunque origine (sconsigliato).
 ALLOWED_ORIGIN = "https://luiconsulting-bot.github.io"
 
 # Durata delle credenziali, in secondi. Corta per scelta: sono pubbliche

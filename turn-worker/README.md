@@ -90,7 +90,7 @@ GitHub Pages e basta — la prima è quella giusta: **non serve installare nient
    | Nome | Tipo | Valore |
    |---|---|---|
    | `TURN_KEY_ID` | testo | il valore **corto** del passo 1 |
-   | `ALLOWED_ORIGIN` | testo | `https://luiconsulting-bot.github.io` |
+   | `ALLOWED_ORIGIN` | testo | `https://luiconsulting-bot.github.io` — **solo il dominio**, senza `/Sudoku` |
    | `TTL` | testo | `3600` |
    | `TURN_KEY_API_TOKEN` | **Secret** | il valore **lungo** del passo 1 |
 
