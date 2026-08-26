@@ -302,8 +302,15 @@
   // codice con soli candidati locali, che tra due dispositivi diversi non
   // funzionerà mai. Perciò: si esce presto appena si ha un indirizzo pubblico,
   // e solo in mancanza di quello si aspetta fino in fondo.
+  //
+  // Un secondo tranello, scoperto in uso reale: il candidato del ponte (`relay`)
+  // arriva **sempre dopo** quello STUN (`srflx`), perché allocare il canale sul
+  // server TURN richiede un giro in più. Uscire al primo srflx significa quindi
+  // pubblicare un codice senza il ponte — che risulta «attivo» ma non serve a
+  // niente. Perciò, quando il ponte c'è, si aspetta il suo candidato.
   function waitForIce(pc, opts = {}) {
-    const maxMs = opts.maxMs || 10000;
+    const needRelay = !!opts.needRelay;
+    const maxMs = opts.maxMs || (needRelay ? 15000 : 10000);
     const graceMs = opts.graceMs || 500;
     const onProgress = opts.onProgress;
 
@@ -326,9 +333,11 @@
         if (!e.candidate) return finish(); // null = raccolta conclusa
         const type = (/ typ (\w+)/.exec(e.candidate.candidate) || [])[1];
         if (onProgress) onProgress(type);
-        if (type === 'srflx' || type === 'relay') {
-          // Abbiamo un indirizzo raggiungibile da fuori: un attimo per
-          // raccoglierne altri e poi basta, senza aspettare il tetto.
+
+        // Con il ponte attivo solo il suo candidato chiude l'attesa: uno srflx
+        // non basta, perché il relay arriverebbe subito dopo e resterebbe fuori.
+        const enough = needRelay ? type === 'relay' : (type === 'srflx' || type === 'relay');
+        if (enough) {
           clearTimeout(grace);
           grace = setTimeout(finish, graceMs);
         }
@@ -377,10 +386,10 @@
       onStateChange(fn) { handlers.state = fn; setState('connecting'); },
 
       // Host: crea l'offerta e restituisce il codice di invito
-      async createInvite(onProgress) {
+      async createInvite(onProgress, needRelay) {
         bindChannel(pc.createDataChannel('sudoku', { ordered: true }));
         await pc.setLocalDescription(await pc.createOffer());
-        await waitForIce(pc, { onProgress });
+        await waitForIce(pc, { onProgress, needRelay });
         return pc.localDescription.sdp;
       },
 
@@ -390,10 +399,10 @@
       },
 
       // Guest: applica l'invito e restituisce l'SDP della risposta
-      async joinWithInvite(code, onProgress) {
+      async joinWithInvite(code, onProgress, needRelay) {
         await pc.setRemoteDescription({ type: 'offer', sdp: decodeDesc(code) });
         await pc.setLocalDescription(await pc.createAnswer());
-        await waitForIce(pc, { onProgress });
+        await waitForIce(pc, { onProgress, needRelay });
         return pc.localDescription.sdp;
       },
 
@@ -429,6 +438,7 @@
     LocalTransport,
     RTCTransport,
     iceConfig,
+    waitForIce,
     turnEndpoint,
     normalizeIceServers,
     encodeDesc,

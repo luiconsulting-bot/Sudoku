@@ -223,9 +223,22 @@
   // collegamento fallisca senza spiegazioni.
   function localOnlyWarning() {
     const s = netSummary();
-    if (!s || s.routable > 0) return null;
-    return 'Non ho trovato un indirizzo pubblico: questo codice funzionerà solo se '
-      + 'siete sulla stessa rete Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+    if (!s) return null;
+
+    if (s.routable === 0) {
+      return 'Non ho trovato un indirizzo pubblico: questo codice funzionerà solo se '
+        + 'siete sulla stessa rete Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+    }
+
+    // Il ponte risponde ma non ha prodotto un indirizzo: le credenziali arrivano
+    // e non servono a niente. È diverso da «ponte assente» e va detto, perché il
+    // rimedio sta su Cloudflare, non nella rete dei due giocatori.
+    if (duo.bridge && duo.bridge.bridge === 'on' && s.relay === 0) {
+      return 'Il ponte risponde ma non ha fornito un indirizzo utilizzabile: '
+        + 'controlla la TURN Server App su Cloudflare. In rete mobile il '
+        + 'collegamento probabilmente non riuscirà.';
+    }
+    return null;
   }
 
   const netSummary = () =>
@@ -350,10 +363,9 @@
       const transport = Net.RTCTransport(ice.servers);
       attach(transport);
       await transport.createInvite((type) => {
-        if (type === 'srflx' || type === 'relay') {
-          setStatus(el.hostStatus, 'Indirizzo pubblico trovato, preparo l’invito…');
-        }
-      });
+        if (type === 'relay') setStatus(el.hostStatus, 'Ponte agganciato, preparo l’invito…');
+        else if (type === 'srflx') setStatus(el.hostStatus, 'Indirizzo pubblico trovato, cerco il ponte…');
+      }, ice.bridge === 'on');
       renderInvite();
       startInviteAge();
       renderNet(el.hostNet);
@@ -477,10 +489,9 @@
       const transport = Net.RTCTransport(ice.servers);
       attach(transport);
       await transport.joinWithInvite(code, (type) => {
-        if (type === 'srflx' || type === 'relay') {
-          setStatus(el.guestStatus, 'Indirizzo pubblico trovato, preparo la risposta…');
-        }
-      });
+        if (type === 'relay') setStatus(el.guestStatus, 'Ponte agganciato, preparo la risposta…');
+        else if (type === 'srflx') setStatus(el.guestStatus, 'Indirizzo pubblico trovato, cerco il ponte…');
+      }, ice.bridge === 'on');
       renderAnswer();
       renderNet(el.guestNet);
       // Invito servito: solo ora si può ripulire l'URL. Toglierlo prima significa
