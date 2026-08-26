@@ -77,8 +77,11 @@ GitHub Pages e basta — la prima è quella giusta: **non serve installare nient
 
 ### A. Dal pannello Cloudflare, senza terminale
 
-1. **Workers & Pages → Create → Create Worker**. Chiamalo `sudoku-turn` e premi
-   **Deploy** (il codice di esempio va bene, lo sostituiamo subito).
+1. **Workers & Pages → Create**. Cloudflare rinomina spesso questa schermata
+   (*Create application*, *Create Worker*, *Start with Hello World!*): l'opzione
+   giusta è quella che crea un **Worker vuoto**, non *Pages* e non «importa un
+   repository», che servono a pubblicare siti. Chiamalo `sudoku-turn` e premi
+   **Deploy** — il codice di esempio va bene, lo sostituiamo subito.
 2. **Edit code**: cancella tutto e incolla il contenuto di
    [`worker.js`](worker.js) — su GitHub, dal pulsante *Copy raw file*. Poi
    **Deploy**.
