@@ -77,4 +77,23 @@ const ordineReale = [[100, 'host'], [300, 'srflx'], [1500, 'relay'], [1600, null
   console.log(`✓ raccolta conclusa dal browser: si esce subito (${ms} ms)`);
 }
 
+/* --- La raffica del ponte non va troncata al primo candidato --- */
+// Cloudflare offre cinque indirizzi e un dispositivo a doppia pila ne alloca
+// uno per famiglia su ciascuno: i relay arrivano in fila, non insieme. Se
+// l'attesa si chiudesse al primo, dal codice sparirebbe una famiglia intera —
+// e due elenchi di famiglie diverse non formano nemmeno una coppia ICE.
+{
+  const visti = [];
+  const t0 = Date.now();
+  await Net.waitForIce(
+    fakePc([[100, 'host'], [300, 'srflx'], [1500, 'relay'], [1900, 'relay'], [2300, 'relay']]),
+    { needRelay: true, onProgress: (t) => visti.push(t) },
+  );
+  const ms = Date.now() - t0;
+  const relay = visti.filter((t) => t === 'relay').length;
+  assert.equal(relay, 3, `raccolti tutti i relay della raffica, non solo il primo: ${relay}`);
+  assert.ok(ms < 4000, `senza attendere il tetto: ${ms} ms`);
+  console.log(`✓ raffica dal ponte: raccolti tutti e ${relay} i relay in ${ms} ms`);
+}
+
 console.log('\nAttesa dei candidati: tutte le prove sono passate.');

@@ -63,18 +63,42 @@ si attraversa. Il ponte inoltra i pacchetti. Il token TURN non può stare nella
 pagina (è pubblica), quindi un Worker Cloudflare conia credenziali a scadenza:
 `turn-worker/`, indirizzo in `config.js`.
 
-Tre punti delicati, tutti già costati un ciclo di prove:
+Quattro punti delicati, tutti già costati un ciclo di prove:
 
 1. **Il candidato `relay` arriva dopo lo `srflx`.** Uscire dall'attesa al primo
    indirizzo pubblico pubblica un codice senza il ponte — attivo e inutile.
-   `waitForIce(pc, {needRelay})` aspetta il relay quando il ponte è in uso.
+   `waitForIce(pc, {needRelay})` aspetta il relay quando il ponte è in uso, e
+   riapre l'attesa a ogni relay successivo: arrivano in raffica, non insieme.
 2. **Una risposta si applica una volta sola.** Dopo, `signalingState` è `stable`
    e un secondo tentativo dà «Called in wrong state». Incollare avvia il
    collegamento da sé, quindi premere «Collega» dopo è normale: `acceptAnswer`
    restituisce `false` invece di fallire.
 3. **I codici vanno snelliti.** Col ponte un telefono produce venti e più
-   candidati e il codice supera i mille caratteri: se ne tengono due per tipo,
-   per priorità.
+   candidati e il codice supera i mille caratteri: se ne tengono due per tipo
+   **e famiglia**, per priorità. `raddr`/`rport` non si trasmettono affatto.
+4. **IPv4 e IPv6 sono due reti separate.** È il difetto che ha tenuto fermo il
+   duello tra due macchine: un PC a doppia pila raccoglie dieci relay, cinque
+   per famiglia, e Chrome dà priorità più alta a quelli IPv6. Tenendo «i due
+   migliori» partivano due relay IPv6 mentre il telefono in 5G rispondeva con
+   relay IPv4. Candidati di famiglie diverse non formano nemmeno una coppia:
+   ICE non prova niente, non registra errori, e il collegamento fallisce *con
+   il ponte attivo da entrambe le parti*. Perciò il taglio è per tipo **e**
+   famiglia, e il referto le dice sempre entrambe.
+
+### Il referto tecnico
+
+Da qui l'attraversamento NAT vero non si prova, quindi un fallimento sul campo
+non lascia niente da leggere. «Referto tecnico» (nella lobby, sotto i due passi)
+raccoglie ciò che serve a capirlo da lontano: candidati **spediti** e
+**ricevuti** per tipo e famiglia, gli `icecandidateerror` con codice e URL del
+server (401 = credenziali rifiutate, 701 = server irraggiungibile), le coppie
+ICE con il loro stato, e la cronologia degli stati. Si apre da sé quando il
+collegamento fallisce. **Va chiesto a entrambi i dispositivi**: il guasto tipico
+si vede solo confrontando i due elenchi.
+
+Attenzione alla differenza tra *raccolti* e *spediti*: il taglio può ridurre
+dieci candidati dal ponte a quattro, e prima il referto mostrava i raccolti —
+rassicurando («10 dal ponte») su indirizzi che all'avversario non arrivavano.
 
 ### La diagnosi è una sola funzione
 
@@ -98,15 +122,15 @@ Cosa coprono, in ordine di rapidità:
 
 | File | Copre |
 |---|---|
-| `test-logic` | generatore deterministico, codice partita, codec SDP, codici come li mandano i telefoni |
-| `test-relay-wait` | l'attesa dei candidati aspetta il ponte quando serve |
-| `test-trim` | molti candidati non gonfiano il codice |
+| `test-logic` | generatore deterministico, codice partita, codec SDP, codici come li mandano i telefoni, famiglie di indirizzi |
+| `test-relay-wait` | l'attesa dei candidati aspetta il ponte, e ne aspetta la raffica |
+| `test-trim` | molti candidati non gonfiano il codice, ma nessuna famiglia sparisce |
 | `test-solo` | non-regressione del single player |
 | `test-duel` | duello capo a capo con **WebRTC reale** tra due contesti |
 | `test-duel-paths` | errori esauriti, connessione persa, vittoria a tavolino, protocollo incompatibile |
 | `test-connect` | schermata di collegamento, codice lungo, età dell'invito |
 | `test-flow` | il giro completo senza premere pulsanti |
-| `test-diag` | versione coerente, referto di rete, sorvegliante del collegamento |
+| `test-diag` | versione coerente, referto di rete e referto tecnico, sorvegliante del collegamento |
 | `test-turn` / `test-turn-down` | il ponte, e il ponte guasto |
 | `test-messaggi` | i testi corrispondono allo stato reale |
 
@@ -137,6 +161,11 @@ ponte»).
 **Da verificare sul campo**: due telefoni in 5G, e telefono contro PC su due
 Wi-Fi diverse. È il caso per cui il ponte esiste; l'architettura lo prevede, ma
 non è ancora stato confermato da una prova reale.
+
+La prova PC-in-Wi-Fi contro telefono-in-5G del 26/08/2026 è fallita con il ponte
+attivo da entrambe le parti: la causa più probabile è il punto 4 qui sopra (le
+due famiglie di indirizzi), corretta nella `2026.08.26-1`. Se si ripete, il
+referto tecnico dei due dispositivi dice se lo era davvero.
 
 Non fatto: la **modalità co-op** (un solo Sudoku giocato in due sulla stessa
 griglia), progettata in `DESIGN-multiplayer.md` §6. Riusa trasporto, protocollo,

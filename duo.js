@@ -91,6 +91,9 @@
     hostBack: $('duo-host-back'),
     long: $('duo-long'),
     longG: $('duo-long-g'),
+    reportBox: $('duo-report-box'),
+    report: $('duo-report'),
+    reportCopy: $('duo-report-copy'),
 
     inviteIn: $('duo-invite-in'),
     joinGo: $('duo-join-go'),
@@ -154,6 +157,7 @@
     el.codeIn.value = '';
     setStatus(el.hostStatus, '');
     setStatus(el.guestStatus, '');
+    if (el.reportBox) { el.reportBox.hidden = true; el.reportBox.open = false; }
     refreshCurrentCode();
     showStep('menu');
     el.overlay.hidden = false;
@@ -249,7 +253,17 @@
     }
 
     let failure;
-    if (relay > 0) {
+    const incompatibili = famiglieIncompatibili();
+    if (incompatibili) {
+      // La diagnosi che mancava, e che spiegava il caso rimasto senza risposta:
+      // due dispositivi con il ponte attivo e nessun collegamento perché i loro
+      // indirizzi appartengono a famiglie diverse. Un indirizzo IPv6 e uno IPv4
+      // non si parlano: ICE non forma nemmeno una coppia e non prova nulla.
+      failure = 'Nessun collegamento: i vostri indirizzi non sono compatibili — '
+        + `qui ${incompatibili.miei}, dall’altra parte ${incompatibili.suoi}. `
+        + 'Controllate di avere la stessa versione (è in fondo alla pagina) e '
+        + 'riprovate; se si ripete, mettetevi sulla stessa Wi-Fi.';
+    } else if (relay > 0) {
       // Il caso raro: il ponte era davvero in uso e non è bastato.
       failure = 'Nessun collegamento, nonostante il ponte fosse in uso. Prova a '
         + 'generare un nuovo invito; se si ripete, mettetevi sulla stessa Wi-Fi.';
@@ -270,8 +284,38 @@
 
   const localOnlyWarning = () => networkDiagnosis().warning;
 
+  // IPv4 e IPv6 sono due reti che non si parlano: un candidato dell'una non può
+  // nemmeno essere provato contro uno dell'altra. Se i due codici non hanno
+  // nessuna famiglia in comune fra gli indirizzi buoni per uscire dalla LAN,
+  // il collegamento non aveva alcuna possibilità, e dirlo è meglio che
+  // rimandare l'utente sulla stessa Wi-Fi senza spiegazioni.
+  function famiglieIncompatibili() {
+    const t = duo.transport;
+    const miei = netSummary();
+    const suoi = t && t.peerSummary ? t.peerSummary() : null;
+    if (!miei || !suoi) return null;
+    const a = Net.routableFamilies(miei);
+    const b = Net.routableFamilies(suoi);
+    if (!a.length || !b.length) return null; // manca del tutto un indirizzo pubblico: altro caso
+    if (a.some((f) => b.includes(f))) return null;
+    const nome = (l) => l.map((f) => (f === 'v4' ? 'IPv4' : 'IPv6')).join(' e ');
+    return { miei: `solo ${nome(a)}`, suoi: `solo ${nome(b)}` };
+  }
+
+  // Compatto o lungo cambiano quanti candidati partono: il referto deve
+  // guardare la scrittura che l'avversario riceverà davvero.
+  const longChecked = () => !!(duo.role === 'guest' ? el.longG && el.longG.checked
+    : el.long && el.long.checked);
+
   const netSummary = () =>
-    (duo.transport && duo.transport.summary ? duo.transport.summary() : null);
+    (duo.transport && duo.transport.summary ? duo.transport.summary(longChecked()) : null);
+
+  function statoPonte() {
+    const b = duo.bridge;
+    if (!b || b.bridge === 'off') return 'non configurato';
+    if (b.bridge === 'on') return `attivo (${b.count || 1} server)`;
+    return `non raggiungibile (${b.error})`;
+  }
 
   // Referto in chiaro degli indirizzi trovati. Serve a chi prova: «0 pubblici»
   // e «2 pubblici» sono due problemi diversi con due rimedi diversi, e senza
@@ -284,12 +328,41 @@
     if (s.routable) parti.push(`${s.routable} pubblic${s.routable === 1 ? 'o' : 'i'}`);
     if (s.host) parti.push(`${s.host} local${s.host === 1 ? 'e' : 'i'}${s.mdns ? ' (mDNS)' : ''}`);
     if (s.relay) parti.push(`${s.relay} dal ponte`);
-    const b = duo.bridge;
-    const ponte = !b || b.bridge === 'off' ? 'Ponte: non configurato'
-      : b.bridge === 'on' ? 'Ponte: attivo'
-        : `Ponte: non raggiungibile (${b.error})`;
-    node.textContent = `Indirizzi trovati: ${parti.join(' · ') || 'nessuno'}. ${ponte}.`;
+    // IPv4 e IPv6 vanno detti: un indirizzo IPv6 e uno IPv4 non si parlano, e
+    // due referti che si somigliano possono essere incompatibili proprio lì.
+    const fam = [];
+    if (s.v4) fam.push(`IPv4 ${s.v4}`);
+    if (s.v6) fam.push(`IPv6 ${s.v6}`);
+    const dettaglio = fam.length ? ` (${fam.join(' · ')})` : '';
+    node.textContent = `Indirizzi nel codice: ${parti.join(' · ') || 'nessuno'}${dettaglio}.`
+      + ` Ponte: ${statoPonte()}.`;
     node.className = 'duo__net' + (s.routable ? '' : ' duo__net--warn');
+  }
+
+  /* ---------- Referto tecnico ---------- */
+
+  // Le prove non attraversano NAT veri: quando un collegamento fallisce sul
+  // campo, questo referto è l'unica traccia di cosa sia successo. Va chiesto a
+  // *entrambi* i dispositivi, perché il difetto tipico — indirizzi che non si
+  // incontrano — si vede solo mettendo i due elenchi a confronto.
+  async function renderReport(apri) {
+    if (!el.reportBox || !el.report) return;
+    const t = duo.transport;
+    if (!t || !t.report) { el.reportBox.hidden = true; return; }
+    el.reportBox.hidden = false;
+    netSummary(); // aggiorna la riga «spediti» del referto
+    let righe;
+    try {
+      righe = await t.report();
+    } catch (err) {
+      righe = ['referto non leggibile: ' + (err.message || err)];
+    }
+    el.report.value = [
+      `Sudoku ${S.APP_VERSION} · ${duo.role === 'guest' ? 'chi risponde' : 'chi invita'}`,
+      `ponte: ${statoPonte()}`,
+      ...righe,
+    ].join('\n');
+    if (apri) el.reportBox.open = true;
   }
 
   /* ---------- Freschezza dell'invito ---------- */
@@ -332,6 +405,7 @@
   }
 
   function onTransportState(st) {
+    renderReport(false);
     if (st === 'open') {
       duo.lastSeen = Date.now();
       stopInviteAge(); // collegati: l'età dell'invito non conta più
@@ -347,6 +421,7 @@
     } else if (st === 'failed') {
       setStatus(duo.role === 'host' ? el.hostStatus : el.guestStatus,
         networkDiagnosis().failure, 'bad');
+      renderReport(true);
       updateLink('bad');
     } else if (st === 'closed') {
       updateLink('bad');
@@ -397,6 +472,7 @@
       renderInvite();
       startInviteAge();
       renderNet(el.hostNet);
+      renderReport(false);
       const warn = localOnlyWarning();
       setStatus(el.hostStatus, warn || 'Manda il link all’avversario, poi incolla qui il '
         + 'codice di risposta che ti rimanda.', warn ? 'bad' : null);
@@ -454,6 +530,7 @@
     duo.handshakeId = setTimeout(() => {
       if (duo.phase !== 'connecting' || !duo.transport) return; // già partito
       setStatus(node, networkDiagnosis().failure, 'bad');
+      renderReport(true);
     }, HANDSHAKE_TIMEOUT_MS);
   }
 
@@ -519,6 +596,7 @@
       }, ice.bridge === 'on');
       renderAnswer();
       renderNet(el.guestNet);
+      renderReport(false);
       // Invito servito: solo ora si può ripulire l'URL. Toglierlo prima significa
       // perderlo se il telefono ricarica o ripristina la pagina dalla cache.
       if (/[#&]j=/.test(location.hash)) {
@@ -1023,8 +1101,20 @@
   el.guestBack.addEventListener('click', () => { leaveDuel(false); showStep('menu'); });
 
   // La scelta compatto/lungo si applica al codice già mostrato, senza rigenerarlo
-  el.long.addEventListener('change', renderInvite);
-  el.longG.addEventListener('change', renderAnswer);
+  el.long.addEventListener('change', () => { renderInvite(); renderNet(el.hostNet); });
+  el.longG.addEventListener('change', () => { renderAnswer(); renderNet(el.guestNet); });
+
+  if (el.reportBox) {
+    // Il referto invecchia in fretta: si rilegge ogni volta che lo si apre,
+    // altrimenti mostra la fotografia di dieci secondi prima.
+    el.reportBox.addEventListener('toggle', () => { if (el.reportBox.open) renderReport(false); });
+  }
+  if (el.reportCopy) {
+    el.reportCopy.addEventListener('click', async () => {
+      await renderReport(false);
+      copyText(el.report.value, el.report);
+    });
+  }
 
   // Su un telefono ogni tocco in più è attrito: appena nel campo compare un
   // codice valido si procede da soli, senza aspettare la pressione del pulsante.

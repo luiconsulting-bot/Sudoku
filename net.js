@@ -45,15 +45,33 @@
   // tipo, per priorità decrescente, conservando l'ordine originale.
   const MAX_PER_TYPE = 2;
 
+  // La famiglia dell'indirizzo: 4, 6, oppure 0 per i nomi mDNS `.local`, che
+  // la nascondono. Serve al taglio qui sotto.
+  function famiglia(ip) {
+    const s = String(ip);
+    if (s.includes(':')) return 6;
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(s)) return 4;
+    return 0; // nome mDNS: la famiglia si scopre solo risolvendolo
+  }
+
+  // Il taglio si fa per tipo **e per famiglia di indirizzo**, non per solo tipo.
+  // Il motivo è costato una serata di prove sul campo: un PC con IPv4 e IPv6
+  // raccoglie dieci candidati dal ponte, cinque per famiglia, e Chrome dà
+  // priorità più alta a quelli IPv6. Tenendo i due migliori e basta partivano
+  // due relay IPv6, mentre il telefono in 5G mandava due relay IPv4. Due
+  // candidati di famiglie diverse non formano nemmeno una coppia: ICE non
+  // prova niente e il collegamento fallisce *pur avendo il ponte attivo da
+  // entrambe le parti* — il caso che sembrava inspiegabile.
   function trimCandidates(cands) {
-    const perTipo = new Map();
+    const perGruppo = new Map();
     for (const c of cands) {
-      const lista = perTipo.get(c[0]) || [];
+      const chiave = c[0] + '/' + famiglia(c[1]);
+      const lista = perGruppo.get(chiave) || [];
       lista.push(c);
-      perTipo.set(c[0], lista);
+      perGruppo.set(chiave, lista);
     }
     const tenuti = new Set();
-    for (const lista of perTipo.values()) {
+    for (const lista of perGruppo.values()) {
       lista.sort((a, b) => b[3] - a[3]); // priorità ICE decrescente
       for (const c of lista.slice(0, MAX_PER_TYPE)) tenuti.add(c);
     }
@@ -82,9 +100,11 @@
       if (m[2] !== '1') continue;
       const type = CAND_OUT[m[6].toLowerCase()];
       if (type === undefined) continue;
-      const c = [type, m[4], Number(m[5]), Number(m[3])];
-      if (m[7]) c.push(m[7], Number(m[8]));
-      cands.push(c);
+      // `raddr`/`rport` non si trasmettono: per ICE sono informativi (Chrome
+      // stesso li azzera negli srflx che pubblica), occupano fino a quaranta
+      // caratteri l'uno e nel codice di risposta di un telefono in 5G finivano
+      // per esporre il suo IPv6 pubblico. Si ricostruiscono a destinazione.
+      cands.push([type, m[4], Number(m[5]), Number(m[3])]);
     }
     if (cands.length === 0) return null; // senza candidati il codice è inservibile
 
@@ -119,8 +139,13 @@
 
     cands.forEach((c, i) => {
       const [type, ip, port, prio, raddr, rport] = c;
-      let l = `a=candidate:${i + 1} 1 udp ${prio} ${ip} ${port} typ ${CAND_IN[type] || 'host'}`;
+      const tipo = CAND_IN[type] || 'host';
+      let l = `a=candidate:${i + 1} 1 udp ${prio} ${ip} ${port} typ ${tipo}`;
+      // La grammatica dell'SDP vuole `raddr` per tutto ciò che non è `host`.
+      // Se il codice non lo porta (dalla versione che ha smesso di spedirlo) si
+      // rimette quello neutro, della stessa famiglia dell'indirizzo.
       if (raddr) l += ` raddr ${raddr} rport ${rport}`;
+      else if (tipo !== 'host') l += ` raddr ${famiglia(ip) === 6 ? '::' : '0.0.0.0'} rport 0`;
       lines.push(l);
     });
     lines.push('a=end-of-candidates');
@@ -298,20 +323,47 @@
   // Quali candidati contiene un SDP. Serve a sapere *prima* di condividere un
   // codice se quel codice ha qualche speranza di funzionare fuori dalla LAN.
   function candidateSummary(sdp) {
-    const out = { host: 0, srflx: 0, prflx: 0, relay: 0, mdns: 0 };
+    const out = { host: 0, srflx: 0, prflx: 0, relay: 0, mdns: 0, v4: 0, v6: 0, fam: {} };
     const re = /^a=candidate:\S+ (\d+) udp \d+ (\S+) \d+ typ (\w+)/gim;
     let m;
     while ((m = re.exec(sdp)) !== null) {
       if (m[1] !== '1') continue;
       const type = m[3].toLowerCase();
+      const fam = famiglia(m[2]);
       if (type in out) out[type]++;
       if (/\.local$/i.test(m[2])) out.mdns++;
+      if (fam === 4) out.v4++;
+      else if (fam === 6) out.v6++;
+      // Tipo e famiglia insieme: è la coppia che decide se due elenchi di
+      // candidati possono incontrarsi. Un relay IPv6 e un relay IPv4 non
+      // formano nessuna coppia, e contarli entrambi come «2 dal ponte»
+      // nasconde proprio il caso che fa fallire il collegamento.
+      const chiave = type + (fam ? '/v' + fam : '');
+      out.fam[chiave] = (out.fam[chiave] || 0) + 1;
     }
     // Un candidato "raggiungibile da fuori" è ciò che permette a due dispositivi
     // su reti diverse di trovarsi. Gli host (e ancor più quelli mDNS `.local`)
     // valgono solo dentro la stessa rete.
     out.routable = out.srflx + out.relay + out.prflx;
     return out;
+  }
+
+  // "host 2 · relay/v4 2 · relay/v6 2" — la riga da leggere per capire se due
+  // elenchi hanno qualcosa in comune.
+  function summaryDetail(s) {
+    if (!s) return 'nessuno';
+    const parti = Object.entries(s.fam).map(([k, n]) => `${k} ${n}`);
+    return parti.join(' · ') || 'nessuno';
+  }
+
+  // Le famiglie di indirizzi con cui questo codice può uscire dalla propria
+  // rete. IPv4 e IPv6 sono due reti separate: un candidato dell'una non viene
+  // nemmeno provato contro uno dell'altra, quindi due codici senza famiglie in
+  // comune non hanno alcuna possibilità di collegarsi.
+  function routableFamilies(s) {
+    if (!s || !s.fam) return [];
+    return ['v4', 'v6'].filter((f) => ['srflx', 'prflx', 'relay']
+      .some((tipo) => s.fam[`${tipo}/${f}`]));
   }
 
   // I candidati vanno tutti dentro il codice: non c'è un canale per mandarne
@@ -329,10 +381,19 @@
   // server TURN richiede un giro in più. Uscire al primo srflx significa quindi
   // pubblicare un codice senza il ponte — che risulta «attivo» ma non serve a
   // niente. Perciò, quando il ponte c'è, si aspetta il suo candidato.
+  //
+  // Terzo tranello, dello stesso ceppo: i candidati del ponte non arrivano
+  // insieme. Cloudflare offre cinque indirizzi e un dispositivo con IPv4 e IPv6
+  // ne alloca uno per famiglia su ciascuno: dieci risposte in fila, non una.
+  // Chiudere mezzo secondo dopo la *prima* lasciava fuori tutte le altre — e se
+  // la prima famiglia era l'IPv6, dal codice sparivano i relay IPv4, cioè
+  // proprio quelli che il telefono in 5G poteva raggiungere. Perciò l'attesa si
+  // riapre a ogni candidato utile: finisce quando smettono di arrivarne, non al
+  // primo.
   function waitForIce(pc, opts = {}) {
     const needRelay = !!opts.needRelay;
     const maxMs = opts.maxMs || (needRelay ? 15000 : 10000);
-    const graceMs = opts.graceMs || 500;
+    const graceMs = opts.graceMs || 600;
     const onProgress = opts.onProgress;
 
     return new Promise((resolve) => {
@@ -359,6 +420,8 @@
         // non basta, perché il relay arriverebbe subito dopo e resterebbe fuori.
         const enough = needRelay ? type === 'relay' : (type === 'srflx' || type === 'relay');
         if (enough) {
+          // Ogni candidato utile rimanda la chiusura: così la raccolta segue la
+          // raffica invece di troncarla al primo.
           clearTimeout(grace);
           grace = setTimeout(finish, graceMs);
         }
@@ -371,9 +434,89 @@
     });
   }
 
+  /* ---------- Il referto tecnico ---------- */
+
+  // Da qui non si esce su Internet e l'attraversamento NAT vero non è
+  // riproducibile: l'unica fonte di verità è un tentativo su dispositivi reali,
+  // che però avviene lontano da chi legge il codice. Il referto è il modo di
+  // farsi raccontare cosa è successo: quali candidati sono partiti, quali sono
+  // arrivati, che errori hanno dato i server, come sono cambiati gli stati.
+  // Senza, resta solo «non si collega», che non distingue cause diverse.
+  function makeDiag(pc, serverCount) {
+    const t0 = Date.now();
+    const diag = {
+      servers: serverCount,
+      errors: new Map(),   // "codice url" → quante volte
+      states: [],          // [ms, etichetta]
+      gathered: null,      // candidati raccolti da noi
+      sent: null,          // candidati davvero finiti nel codice (dopo il taglio)
+      received: null,      // candidati arrivati dall'avversario
+    };
+
+    const segna = (etichetta) => {
+      const ultimo = diag.states[diag.states.length - 1];
+      if (ultimo && ultimo[1] === etichetta) return;
+      diag.states.push([Date.now() - t0, etichetta]);
+    };
+
+    // L'evento più informativo di tutti, e finora ignorato: dice se il ponte ha
+    // rifiutato le credenziali (401), se non ha risposto (701), e per quale URL.
+    pc.addEventListener('icecandidateerror', (e) => {
+      // L'URL si tiene per intero, `?transport=` compreso: il ponte di
+      // Cloudflare offre cinque indirizzi e sapere *quale* ha fallito è
+      // metà della diagnosi.
+      const chiave = `${e.errorCode || '?'} ${e.url || '?'}`
+        + (e.errorText ? ' — ' + e.errorText : '');
+      diag.errors.set(chiave, (diag.errors.get(chiave) || 0) + 1);
+    });
+    pc.addEventListener('icegatheringstatechange', () => segna('raccolta:' + pc.iceGatheringState));
+    pc.addEventListener('iceconnectionstatechange', () => segna('ice:' + pc.iceConnectionState));
+    pc.addEventListener('connectionstatechange', () => segna('conn:' + pc.connectionState));
+    segna('avvio');
+    return diag;
+  }
+
+  // Le coppie di candidati come le vede il browser: è lì che si legge se ICE ha
+  // provato qualcosa e cosa ha risposto. Zero coppie con candidati da entrambe
+  // le parti significa che nessuna combinazione era compatibile — il sintomo
+  // delle due famiglie di indirizzi che non si incontrano.
+  async function pairReport(pc) {
+    const righe = [];
+    try {
+      const stats = await pc.getStats();
+      const locali = new Map();
+      const remoti = new Map();
+      stats.forEach((x) => {
+        if (x.type === 'local-candidate') locali.set(x.id, x);
+        if (x.type === 'remote-candidate') remoti.set(x.id, x);
+      });
+      const conta = new Map();
+      let scelta = null;
+      stats.forEach((x) => {
+        if (x.type !== 'candidate-pair') return;
+        conta.set(x.state, (conta.get(x.state) || 0) + 1);
+        if (x.nominated || x.selected) scelta = x;
+      });
+      const parti = [...conta].map(([st, n]) => `${st} ${n}`);
+      righe.push('coppie: ' + (parti.join(' · ') || 'nessuna'));
+      const descrivi = (c) => (c
+        ? `${c.candidateType} ${c.address || '(nascosto)'}:${c.port}`
+        : '?');
+      if (scelta) {
+        righe.push(`scelta: ${descrivi(locali.get(scelta.localCandidateId))}`
+          + ` → ${descrivi(remoti.get(scelta.remoteCandidateId))}`);
+      }
+    } catch (err) {
+      righe.push('coppie: non leggibili (' + (err.message || err) + ')');
+    }
+    return righe;
+  }
+
   function RTCTransport(iceServers) {
-    const pc = new RTCPeerConnection({ iceServers: iceServers || ICE_SERVERS });
+    const servers = iceServers || ICE_SERVERS;
+    const pc = new RTCPeerConnection({ iceServers: servers });
     const handlers = { message: null, state: null };
+    const diag = makeDiag(pc, servers.length);
     let dc = null;
     let closed = false;
     let lastState = null;
@@ -411,6 +554,7 @@
         bindChannel(pc.createDataChannel('sudoku', { ordered: true }));
         await pc.setLocalDescription(await pc.createOffer());
         await waitForIce(pc, { onProgress, needRelay });
+        diag.gathered = candidateSummary(pc.localDescription.sdp);
         return pc.localDescription.sdp;
       },
 
@@ -421,15 +565,20 @@
       // comunque «Collega» ne scatena un altro.
       async acceptAnswer(code) {
         if (pc.signalingState !== 'have-local-offer') return false;
-        await pc.setRemoteDescription({ type: 'answer', sdp: decodeDesc(code) });
+        const sdp = decodeDesc(code);
+        diag.received = candidateSummary(sdp);
+        await pc.setRemoteDescription({ type: 'answer', sdp });
         return true;
       },
 
       // Guest: applica l'invito e restituisce l'SDP della risposta
       async joinWithInvite(code, onProgress, needRelay) {
-        await pc.setRemoteDescription({ type: 'offer', sdp: decodeDesc(code) });
+        const sdp = decodeDesc(code);
+        diag.received = candidateSummary(sdp);
+        await pc.setRemoteDescription({ type: 'offer', sdp });
         await pc.setLocalDescription(await pc.createAnswer());
         await waitForIce(pc, { onProgress, needRelay });
+        diag.gathered = candidateSummary(pc.localDescription.sdp);
         return pc.localDescription.sdp;
       },
 
@@ -440,9 +589,44 @@
         return encodeDesc(pc.localDescription.sdp, useLong);
       },
 
-      // Che tipo di indirizzi contiene il nostro codice
-      summary() {
-        return pc.localDescription ? candidateSummary(pc.localDescription.sdp) : null;
+      // Che tipo di indirizzi contiene il nostro codice. Attenzione: quelli
+      // *spediti*, non quelli raccolti. La differenza non è un dettaglio — il
+      // taglio può ridurre dieci candidati dal ponte a quattro — e mostrare i
+      // raccolti significava rassicurare («10 dal ponte») su indirizzi che
+      // all'avversario non arrivavano.
+      summary(useLong) {
+        if (!pc.localDescription) return null;
+        const s = candidateSummary(decodeDesc(encodeDesc(pc.localDescription.sdp, useLong)));
+        diag.sent = s;
+        return s;
+      },
+
+      // Che indirizzi ci ha mandato l'avversario. Il confronto con i nostri è
+      // l'unica diagnosi possibile del caso «ponte attivo da entrambe le parti
+      // e niente collegamento».
+      peerSummary() { return diag.received; },
+
+      // Il referto in chiaro, da copiare e mandare a chi guarda il codice.
+      async report() {
+        const righe = [];
+        const s = (etichetta, sommario) => {
+          if (sommario) righe.push(`${etichetta}: ${summaryDetail(sommario)}`);
+        };
+        righe.push(`server ICE: ${diag.servers}`);
+        s('raccolti', diag.gathered || (pc.localDescription
+          ? candidateSummary(pc.localDescription.sdp) : null));
+        s('spediti', diag.sent);
+        s('ricevuti', diag.received);
+        if (diag.errors.size) {
+          for (const [chiave, n] of diag.errors) {
+            righe.push(`errore ICE ×${n}: ${chiave}`);
+          }
+        } else {
+          righe.push('errori ICE: nessuno');
+        }
+        righe.push(...await pairReport(pc));
+        righe.push('stati: ' + diag.states.map(([ms, e]) => `${(ms / 1000).toFixed(1)}s ${e}`).join(' → '));
+        return righe;
       },
 
       send(msg) {
@@ -470,6 +654,8 @@
     normalizeIceServers,
     encodeDesc,
     decodeDesc,
+    summaryDetail,
+    routableFamilies,
     extractCode,
     compactSdp,
     expandSdp,

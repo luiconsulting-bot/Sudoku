@@ -7,7 +7,7 @@
   <meta name="description" content="Gioca a Sudoku nel browser: quattro livelli di difficoltà, note, suggerimenti, timer e record personali." />
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Cg stroke='white' stroke-width='6' opacity='.9'%3E%3Cpath d='M36 12v76M64 12v76M12 36h76M12 64h76'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=2026.08.08-9" />
+  <link rel="stylesheet" href="style.css?v=2026.08.26-1" />
 </head>
 <body>
   <div class="app">
@@ -219,9 +219,11 @@
         <details class="duo__help">
           <summary>Non si collega?</summary>
           <ul>
-            <li><strong>Guarda la riga «Indirizzi trovati».</strong> È la
+            <li><strong>Guarda la riga «Indirizzi nel codice».</strong> È la
               diagnosi: dice se c’è un indirizzo pubblico, se il ponte è attivo
-              e se ha fornito un suo indirizzo. Ogni caso ha un rimedio diverso.</li>
+              e se ha fornito un suo indirizzo. Sono gli indirizzi che partono
+              davvero nel codice, non tutti quelli trovati. Ogni caso ha un
+              rimedio diverso.</li>
             <li><strong>Con «dal ponte» tra gli indirizzi</strong> il
               collegamento dovrebbe riuscire su qualsiasi rete, anche mobile.
               Se non riesce lo stesso, genera un nuovo invito e riprova.</li>
@@ -232,6 +234,10 @@
             <li><strong>L’invito invecchia.</strong> Se dalla creazione è
               passato più di un minuto, premi «Genera un nuovo invito» e rimanda
               il link.</li>
+            <li><strong>Se il ponte c’è da entrambe le parti e non basta</strong>,
+              apri «Referto tecnico» qui sotto, copialo e fattelo mandare anche
+              dall’altro: è l’unico modo di vedere quali indirizzi si sono
+              incontrati e quali no.</li>
             <li><strong>In ultima istanza</strong>, usa <em>Sfida con un
               codice</em>: giocate lo stesso puzzle senza alcun collegamento e
               confrontate i tempi.</li>
@@ -302,6 +308,23 @@
         <button id="duo-code-back" class="btn btn--link">Indietro</button>
       </div>
 
+      <!-- Referto tecnico: vale per entrambi i passi, quindi sta fuori da tutti
+           e due. È l'unico modo di sapere da lontano perché un collegamento non
+           è riuscito: le prove qui non attraversano NAT veri. -->
+      <details id="duo-report-box" class="duo__help" hidden>
+        <summary>Referto tecnico</summary>
+        <p class="duo__note">
+          Se il collegamento non riesce, copia questo e mandalo insieme al
+          racconto: dice quali indirizzi sono partiti, quali sono arrivati e
+          cosa hanno risposto i server. Serve il referto di <strong>tutti e
+          due</strong> i dispositivi.
+        </p>
+        <textarea id="duo-report" class="duo__code" rows="8" readonly autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+        <div class="duo__buttons">
+          <button id="duo-report-copy" class="btn btn--ghost">Copia il referto</button>
+        </div>
+      </details>
+
     </div>
   </div>
 
@@ -325,9 +348,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=2026.08.08-9"></script>
-  <script src="net.js?v=2026.08.08-9"></script>
-  <script src="script.js?v=2026.08.08-9"></script>
-  <script src="duo.js?v=2026.08.08-9"></script>
+  <script src="config.js?v=2026.08.26-1"></script>
+  <script src="net.js?v=2026.08.26-1"></script>
+  <script src="script.js?v=2026.08.26-1"></script>
+  <script src="duo.js?v=2026.08.26-1"></script>
 </body>
 </html>

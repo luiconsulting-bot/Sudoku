@@ -74,8 +74,10 @@ caduta non ti costa la partita.
 
 ### Se non si collega
 
-Sotto il codice compare il **referto degli indirizzi** trovati. È la diagnosi, e
-distingue casi che hanno rimedi diversi:
+Sotto il codice compare il referto **«Indirizzi nel codice»**. Sono gli indirizzi
+che partono davvero nel codice — non tutti quelli trovati dal telefono — perché
+è quello che l'avversario riceve a decidere se il collegamento può riuscire. È
+la diagnosi, e distingue casi che hanno rimedi diversi:
 
 | Referto | Cosa significa | Rimedio |
 |---|---|---|
@@ -84,6 +86,16 @@ distingue casi che hanno rimedi diversi:
 | `Ponte: non raggiungibile` | il Worker non risponde | controlla l'indirizzo in `config.js` e `ALLOWED_ORIGIN` |
 | `Ponte: non configurato` | il gioco non sa dove chiedere | vedi la sezione sul ponte |
 | nessun indirizzo pubblico, nessun ponte | il telefono non è raggiungibile da fuori | stessa rete Wi-Fi |
+
+Il referto dice anche **IPv4** e **IPv6**: sono due reti separate, e un indirizzo
+dell'una non può incontrare uno dell'altra. Se i due codici non hanno nessuna
+famiglia in comune il collegamento non ha alcuna possibilità — il gioco lo
+riconosce e lo dice, invece di rimandare genericamente alla Wi-Fi.
+
+Se non basta, apri **«Referto tecnico»**: dice quali indirizzi sono partiti,
+quali sono arrivati dall'avversario, che errori hanno dato i server e come sono
+cambiati gli stati. Copialo e fattelo mandare **da entrambi i dispositivi**: il
+guasto tipico si vede solo mettendo i due elenchi a confronto.
 
 Senza ponte il collegamento diretto riesce quasi sempre sulla **stessa Wi-Fi** e
 quasi mai in **rete mobile**, dove gli operatori usano un NAT che il

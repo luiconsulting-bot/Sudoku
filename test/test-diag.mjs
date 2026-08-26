@@ -46,7 +46,7 @@ await page.waitForFunction(() => document.getElementById('duo-host-net').textCon
   null, { polling: 100, timeout: 30000 });
 const net = await page.textContent('#duo-host-net');
 // In questo ambiente lo STUN è irraggiungibile: solo indirizzi locali mDNS
-assert.ok(/Indirizzi trovati/.test(net), `referto presente: "${net}"`);
+assert.ok(/Indirizzi nel codice/.test(net), `referto presente: "${net}"`);
 assert.ok(/local/.test(net) && /mDNS/.test(net), `riconosce il caso mDNS: "${net}"`);
 assert.ok(!/pubblic/.test(net), `nessun pubblico, correttamente: "${net}"`);
 assert.ok(await page.evaluate(() => document.getElementById('duo-host-net').classList.contains('duo__net--warn')),
@@ -95,6 +95,22 @@ const diag = await page.textContent('#duo-host-status');
 assert.ok(/stessa rete Wi-Fi/.test(diag), `spiega cosa fare: "${diag}"`);
 log('✓ risposta accettata ma collegamento mai aperto: diagnosi invece di attesa infinita');
 log(`   → "${diag}"`);
+
+/* --- Il referto tecnico: la sola traccia che si può farsi mandare da lontano --- */
+// Un collegamento fallito sul campo non lascia niente da leggere: qui non si
+// attraversano NAT veri, quindi senza referto la diagnosi resta un'ipotesi.
+assert.ok(await page.evaluate(() => {
+  const box = document.getElementById('duo-report-box');
+  return box && !box.hidden && box.open;
+}), 'il referto si apre da sé quando il collegamento fallisce');
+const referto = await page.inputValue('#duo-report');
+log('  referto:\n' + referto.split('\n').map((r) => '    ' + r).join('\n'));
+for (const atteso of ['spediti:', 'ricevuti:', 'errori ICE', 'coppie:', 'stati:', declared]) {
+  assert.ok(referto.includes(atteso), `il referto dice "${atteso}":\n${referto}`);
+}
+// Quello che conta davvero: tipo *e* famiglia, i due elenchi a confronto
+assert.ok(/spediti: .*(host|srflx|relay)/.test(referto), 'il referto elenca i candidati spediti per tipo');
+log('✓ referto tecnico compilato e copiabile');
 
 if (errors.length) {
   console.error('\n✗ errori rilevati:\n' + errors.join('\n'));

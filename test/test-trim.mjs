@@ -43,4 +43,48 @@ assert.ok(/203\.0\.113\.11 /.test(rebuilt), 'tenuto lo srflx a priorità massima
 assert.ok(/104\.30\.147\.9 /.test(rebuilt), 'tenuto il relay a priorità massima');
 console.log('✓ si tengono i candidati a priorità più alta, non i primi che capitano');
 
+/* --- Il caso del campo: PC con IPv4 e IPv6, telefono in 5G --- */
+// È il difetto che ha tenuto fermo il duello tra due macchine. Un PC a doppia
+// pila raccoglie dieci candidati dal ponte, cinque per famiglia, e Chrome dà
+// priorità più alta a quelli IPv6. Tenendo «i due migliori» partivano due relay
+// IPv6; il telefono, dall'altra parte, mandava relay IPv4. Candidati di
+// famiglie diverse non formano nemmeno una coppia: ICE non prova niente e il
+// collegamento fallisce pur avendo il ponte attivo da entrambe le parti.
+const doppiaPila = [
+  'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0',
+  'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+  'a=ice-ufrag:4ZcD', 'a=ice-pwd:by/PmMA1nUOUXjHXaMHDBGnb',
+  'a=fingerprint:sha-256 ' + Array(32).fill('AB').join(':'),
+  'a=setup:actpass',
+  'a=candidate:h1 1 udp 2122262783 aaaa-1111.local 5001 typ host',
+  'a=candidate:h2 1 udp 2122194687 aaaa-2222.local 5002 typ host',
+  'a=candidate:s1 1 udp 1685790463 2a09:bac1:1::1f:2 6001 typ srflx',
+  'a=candidate:s2 1 udp 1685921535 93.45.12.80 6002 typ srflx',
+];
+// L'IPv6 ha priorità più alta dell'IPv4, come fa Chrome
+for (let i = 0; i < 5; i++) {
+  doppiaPila.push(`a=candidate:r6${i} 1 udp ${33563903 - i} 2a06:98c1:31::${i} ${7000 + i} typ relay`);
+}
+for (let i = 0; i < 5; i++) {
+  doppiaPila.push(`a=candidate:r4${i} 1 udp ${33562000 - i} 104.30.147.${i} ${7100 + i} typ relay`);
+}
+const sdp2 = doppiaPila.join('\r\n') + '\r\n';
+
+const code2 = Net.encodeDesc(sdp2, false);
+const spediti = Net.candidateSummary(Net.decodeDesc(code2));
+console.log(`  raccolti: ${Net.summaryDetail(Net.candidateSummary(sdp2))}`);
+console.log(`  spediti:  ${Net.summaryDetail(spediti)}`);
+console.log(`  codice:   ${code2.length} caratteri`);
+
+assert.ok(spediti.fam['relay/v4'] >= 1, `almeno un relay IPv4 nel codice: ${JSON.stringify(spediti.fam)}`);
+assert.ok(spediti.fam['relay/v6'] >= 1, `almeno un relay IPv6 nel codice: ${JSON.stringify(spediti.fam)}`);
+assert.ok(spediti.fam['srflx/v4'] >= 1 && spediti.fam['srflx/v6'] >= 1, 'entrambe le famiglie fra i pubblici');
+assert.ok(code2.length < 800, `codice ancora maneggevole: ${code2.length} caratteri`);
+console.log('✓ doppia pila: nel codice restano entrambe le famiglie, non solo quella a priorità più alta');
+
+// E il taglio continua a servire: senza, sarebbero quattordici candidati
+assert.ok(spediti.host + spediti.srflx + spediti.relay <= 8,
+  `il taglio è ancora in vigore: ${spediti.host + spediti.srflx + spediti.relay}`);
+console.log('✓ il taglio resta: due per tipo e famiglia, non tutti');
+
 console.log('\nSnellimento del codice: tutte le prove sono passate.');

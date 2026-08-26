@@ -59,7 +59,8 @@ const aiuto = await page.textContent('.duo__help');
 assert.ok(/dal ponte/.test(aiuto), 'l’aiuto spiega cosa significa «dal ponte»');
 assert.ok(/anche mobile/.test(aiuto), 'l’aiuto dice che col ponte la rete mobile funziona');
 assert.ok(/TURN Server App/.test(aiuto), 'l’aiuto indirizza al posto giusto quando il ponte non dà indirizzi');
-assert.ok(/Indirizzi trovati/.test(aiuto), 'l’aiuto rimanda al referto');
+assert.ok(/Indirizzi nel codice/.test(aiuto), 'l’aiuto rimanda al referto');
+assert.ok(/Referto tecnico/.test(aiuto), 'l’aiuto rimanda al referto tecnico quando il ponte non basta');
 log('✓ pannello «Non si collega?» riscritto per l’epoca del ponte');
 
 /* --- Il testo del referto non si contraddice con lo stato --- */

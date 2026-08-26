@@ -102,7 +102,11 @@ assert.ok(rebuilt.includes('a=ice-pwd:by/PmMA1nUOUXjHXaMHDBGnb'), 'password cons
 assert.ok(rebuilt.includes('a=fingerprint:sha-256 A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90'), 'impronta conservata');
 assert.ok(rebuilt.includes('a=setup:actpass'), 'setup conservato');
 assert.ok(rebuilt.includes('9b36eaac-1e2f-4e42-9d3f-1a2b3c4d5e6f.local 58779 typ host'), 'candidato mDNS conservato');
-assert.ok(rebuilt.includes('203.0.113.7 47298 typ srflx raddr 192.168.1.5 rport 47298'), 'candidato srflx con raddr');
+// `raddr` non viaggia più nel codice: per ICE è informativo, allunga il codice
+// e nel caso reale esponeva l'indirizzo privato (o l'IPv6 pubblico) di chi
+// rispondeva. Si rimette neutro, che è anche ciò che Chrome stesso pubblica.
+assert.ok(rebuilt.includes('203.0.113.7 47298 typ srflx raddr 0.0.0.0 rport 0'), 'candidato srflx con raddr neutro');
+assert.ok(!rebuilt.includes('192.168.1.5 rport'), 'l’indirizzo privato non viaggia nel codice');
 assert.ok(!rebuilt.includes('58780'), 'componente 2 scartata');
 assert.ok(!rebuilt.includes('tcp'), 'candidato TCP scartato');
 assert.ok(rebuilt.includes('m=application 9 UDP/DTLS/SCTP webrtc-datachannel'), 'sezione media');
@@ -127,6 +131,41 @@ console.log('✓ codice lungo fedele, codici estranei rifiutati');
 const noCand = realOffer.split('\r\n').filter((l) => !l.startsWith('a=candidate')).join('\r\n');
 assert.ok(Net.encodeDesc(noCand, false).startsWith('S1L:'), 'ripiego automatico sul codice lungo');
 console.log('✓ senza candidati utilizzabili ripiega sul codice lungo');
+
+/* --- 8bis. Famiglie di indirizzi: il caso di due codici che non si incontrano --- */
+// IPv4 e IPv6 non si parlano. Il PC a doppia pila che manda solo relay IPv6 e
+// il telefono che risponde solo con relay IPv4 non formano nemmeno una coppia
+// ICE: nessun tentativo, nessun errore, solo silenzio fino alla scadenza.
+{
+  const conCandidati = (righe) => [
+    'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+    ...righe,
+  ].join('\r\n') + '\r\n';
+
+  const soloV6 = Net.candidateSummary(conCandidati([
+    'a=candidate:1 1 udp 33563903 2a06:98c1:31::5 7000 typ relay raddr :: rport 0',
+  ]));
+  const soloV4 = Net.candidateSummary(conCandidati([
+    'a=candidate:1 1 udp 33563903 104.30.147.5 7000 typ relay raddr 0.0.0.0 rport 0',
+  ]));
+  const doppia = Net.candidateSummary(conCandidati([
+    'a=candidate:1 1 udp 33563903 2a06:98c1:31::5 7000 typ relay raddr :: rport 0',
+    'a=candidate:2 1 udp 33562000 104.30.147.5 7100 typ relay raddr 0.0.0.0 rport 0',
+  ]));
+  const soloLocali = Net.candidateSummary(conCandidati([
+    'a=candidate:1 1 udp 2122262783 abcd-1234.local 5000 typ host',
+  ]));
+
+  assert.deepEqual(Net.routableFamilies(soloV6), ['v6'], 'riconosce il codice solo IPv6');
+  assert.deepEqual(Net.routableFamilies(soloV4), ['v4'], 'riconosce il codice solo IPv4');
+  assert.deepEqual(Net.routableFamilies(doppia), ['v4', 'v6'], 'riconosce il codice con entrambe');
+  assert.deepEqual(Net.routableFamilies(soloLocali), [], 'gli indirizzi locali non escono dalla rete');
+  const comune = (a, b) => Net.routableFamilies(a).some((f) => Net.routableFamilies(b).includes(f));
+  assert.equal(comune(soloV6, soloV4), false, 'solo IPv6 contro solo IPv4: nessuna coppia possibile');
+  assert.equal(comune(doppia, soloV4), true, 'con entrambe le famiglie ci si incontra');
+  console.log('✓ famiglie di indirizzi: due codici incompatibili sono riconoscibili');
+}
 
 /* --- 9. Codici come arrivano davvero dai telefoni --- */
 // Il caso osservato: la tastiera dell'iPhone ha reso minuscolo il prefisso,
