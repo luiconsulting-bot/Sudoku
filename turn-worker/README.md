@@ -16,12 +16,40 @@ sulla stessa Wi-Fi.
 
 ## 1. Creare la chiave TURN
 
-Nel pannello Cloudflare: **Realtime → TURN Keys → Create**. Ne escono due valori:
+Nel pannello Cloudflare: **Realtime → TURN Server Apps → Create**.
 
-| Valore | Segreto? |
-|---|---|
-| **Key ID** | no |
-| **API Token** | **sì**, non deve mai finire in una pagina web |
+> La voce è stata rinominata: la documentazione parla ancora di *TURN key*, la
+> dashboard di *TURN Server App*. È la stessa cosa, e produce la stessa coppia di
+> valori — che a seconda della schermata compaiono come *Token ID* / *API Token*
+> oppure *App ID* / *App Secret*.
+
+| Valore | A cosa serve | Segreto? |
+|---|---|---|
+| **Token ID** (o *App ID*) | finisce nell'indirizzo della richiesta | no |
+| **API Token** (o *App Secret*) | autentica la richiesta | **sì**, non deve mai finire in una pagina web |
+
+**Copia il secondo subito**: molte schermate di Cloudflare lo mostrano una volta
+sola, alla creazione.
+
+### Verificare la coppia prima di andare avanti
+
+Non serve aver pubblicato niente per sapere se i due valori sono giusti e nel
+verso giusto:
+
+```bash
+curl -X POST \
+  "https://rtc.live.cloudflare.com/v1/turn/keys/IL_TUO_TOKEN_ID/credentials/generate-ice-servers" \
+  -H "Authorization: Bearer IL_TUO_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ttl": 3600}'
+```
+
+- Risposta con `"iceServers"` e dentro degli indirizzi `turn:` → **la coppia è
+  giusta**, prosegui.
+- `401` o `403` → il token non è valido, oppure i due valori sono invertiti:
+  quello lungo va nell'intestazione `Authorization`, quello corto nell'indirizzo.
+- `404` → il Token ID non esiste: probabilmente hai copiato l'identificativo
+  sbagliato dalla dashboard.
 
 ## 2. Pubblicare il Worker
 

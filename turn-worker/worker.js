@@ -64,7 +64,18 @@ export default {
 
       if (!res.ok) {
         const detail = await res.text();
-        return json({ error: `Cloudflare ha risposto ${res.status}`, detail: detail.slice(0, 300) }, 502, cors);
+        // I due errori più probabili hanno una causa banale e una diagnosi
+        // precisa: meglio dirla che lasciare un numero nudo.
+        const hint = res.status === 401 || res.status === 403
+          ? 'token rifiutato: controlla TURN_KEY_API_TOKEN, o che i due valori non siano invertiti'
+          : res.status === 404
+            ? 'TURN_KEY_ID inesistente: è l’identificativo corto, non il token'
+            : '';
+        return json({
+          error: `Cloudflare ha risposto ${res.status}`,
+          hint,
+          detail: detail.slice(0, 300),
+        }, 502, cors);
       }
 
       const data = await res.json();
