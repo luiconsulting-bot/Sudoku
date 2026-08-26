@@ -51,6 +51,25 @@ curl -X POST \
 - `404` → il Token ID non esiste: probabilmente hai copiato l'identificativo
   sbagliato dalla dashboard.
 
+Su **Windows** il `curl` di PowerShell è un'altra cosa e le virgolette si
+comportano diversamente: usa `curl.exe`, oppure la forma nativa —
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri "https://rtc.live.cloudflare.com/v1/turn/keys/IL_TUO_TOKEN_ID/credentials/generate-ice-servers" `
+  -Headers @{ Authorization = "Bearer IL_TUO_API_TOKEN" } `
+  -ContentType "application/json" `
+  -Body '{"ttl": 3600}'
+```
+
+**Senza terminale**: salta questa verifica, pubblica il Worker (passo 2) e apri
+il suo indirizzo nel browser. Risponde in JSON, e se qualcosa non va lo dice con
+le stesse indicazioni — è la stessa prova, fatta un passo più avanti.
+
+> Il token non va mai incollato in una chat, in un messaggio o in un file del
+> progetto. Se dovesse sfuggirti, rigeneralo dalla dashboard: quello vecchio
+> smette di valere.
+
 ## 2. Pubblicare il Worker
 
 ```bash
