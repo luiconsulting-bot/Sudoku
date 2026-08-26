@@ -8,6 +8,5 @@ window.SUDOKU_CONFIG = {
   // Vuoto = nessun ponte: il gioco funziona come prima, peer-to-peer puro.
   // Vedi turn-worker/README.md per il ritaglia-e-incolla del deploy.
   //
-  // Esempio: 'https://sudoku-turn.tuonome.workers.dev'
-  turnEndpoint: '',
+  turnEndpoint: 'https://sudoku1v1.lui-consulting.workers.dev',
 };
