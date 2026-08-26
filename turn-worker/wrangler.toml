@@ -1,0 +1,18 @@
+name = "sudoku-turn"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# Id della chiave TURN: non è segreto, può stare qui
+TURN_KEY_ID = ""
+
+# Origine da cui viene aperto il gioco. Deve corrispondere esattamente,
+# schema compreso. Vuoto = qualunque origine (sconsigliato).
+ALLOWED_ORIGIN = "https://luiconsulting-bot.github.io"
+
+# Durata delle credenziali, in secondi. Corta per scelta: sono pubbliche
+# nel momento in cui raggiungono il browser.
+TTL = "3600"
+
+# Il token NON va qui. Si imposta come segreto:
+#   npx wrangler secret put TURN_KEY_API_TOKEN

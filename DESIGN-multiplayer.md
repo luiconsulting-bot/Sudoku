@@ -488,7 +488,19 @@ Deciso per necessità, emerso solo scrivendo il codice:
    frase. Con una precedenza importante: prima il codice come token a sé, poi il
    ripiego a spazi rimossi — invertendole, un codice incollato dentro una frase
    si incollerebbe alle parole vicine e si corromperebbe.
-10. **Nessuna statistica nella prova su due schede.** Le due schede condividono il
+10. **Il ponte c'è, ma spento di serie.** Tre prove reali tra due telefoni hanno
+   confermato ciò che §11 dava per rischio: sulla rete mobile il peer-to-peer non
+   passa, e nessuna correzione al codice lo aggira. Il TURN è quindi stato
+   aggiunto — ma non come si era ipotizzato in §12: il TURN gratuito di Metered
+   non ha più credenziali pubbliche statiche, e in ogni caso una credenziale in
+   una pagina pubblica è una credenziale regalata. La forma giusta è un piccolo
+   Worker che conia credenziali a scadenza tenendo il token dalla propria parte
+   (`turn-worker/`), con l'indirizzo in `config.js`. Resta **disattivato in
+   assenza di configurazione**, così il comportamento predefinito e la promessa
+   sulla riservatezza non cambiano per chi non lo attiva; e se il ponte non
+   risponde si prova comunque in diretta, perché un ponte guasto non deve mai
+   valere meno di nessun ponte.
+11. **Nessuna statistica nella prova su due schede.** Le due schede condividono il
    `localStorage`: la stessa partita verrebbe contata sia come vittoria sia come
    sconfitta, e la seconda scrittura cancellerebbe la prima. In modalità di prova
    non si registra nulla, e la nota nella lobby lo dice. Su due dispositivi reali

@@ -42,6 +42,7 @@
     hbId: null,
     progId: null,
     watchId: null,
+    bridge: null,         // esito dell'interrogazione al ponte TURN
     handshakeId: null,    // sorveglia che il collegamento si apra davvero
     ageId: null,          // aggiorna l'età dell'invito mostrata all'host
     inviteAt: 0,
@@ -240,7 +241,12 @@
     const parti = [];
     if (s.routable) parti.push(`${s.routable} pubblic${s.routable === 1 ? 'o' : 'i'}`);
     if (s.host) parti.push(`${s.host} local${s.host === 1 ? 'e' : 'i'}${s.mdns ? ' (mDNS)' : ''}`);
-    node.textContent = `Indirizzi trovati: ${parti.join(' · ') || 'nessuno'}.`;
+    if (s.relay) parti.push(`${s.relay} dal ponte`);
+    const b = duo.bridge;
+    const ponte = !b || b.bridge === 'off' ? 'Ponte: non configurato'
+      : b.bridge === 'on' ? 'Ponte: attivo'
+        : `Ponte: non raggiungibile (${b.error})`;
+    node.textContent = `Indirizzi trovati: ${parti.join(' · ') || 'nessuno'}. ${ponte}.`;
     node.className = 'duo__net' + (s.routable ? '' : ' duo__net--warn');
   }
 
@@ -339,7 +345,9 @@
     el.inviteAge.textContent = '';
     setStatus(el.hostStatus, 'Cerco un percorso di rete…');
     try {
-      const transport = Net.RTCTransport();
+      const ice = await Net.iceConfig();
+      duo.bridge = ice;
+      const transport = Net.RTCTransport(ice.servers);
       attach(transport);
       await transport.createInvite((type) => {
         if (type === 'srflx' || type === 'relay') {
@@ -405,8 +413,10 @@
         ? 'Nessun collegamento. Il tuo telefono non ha esposto un indirizzo pubblico: '
           + 'mettetevi sulla stessa rete Wi-Fi e riprovate.'
         : 'Nessun collegamento. Gli indirizzi c’erano, ma la rete non lascia passare '
-          + 'il collegamento diretto: è tipico della rete mobile. Provate sulla stessa '
-          + 'Wi-Fi, oppure usate «Sfida con un codice».', 'bad');
+          + 'il collegamento diretto: è tipico della rete mobile. '
+          + (duo.bridge && duo.bridge.bridge === 'on'
+            ? 'Il ponte era attivo ma non è bastato: provate sulla stessa Wi-Fi.'
+            : 'Serve il ponte (TURN), oppure mettetevi sulla stessa Wi-Fi.'), 'bad');
     }, HANDSHAKE_TIMEOUT_MS);
   }
 
@@ -462,7 +472,9 @@
     duo.answeredFor = found.payload;
     setStatus(el.guestStatus, 'Cerco un percorso di rete…');
     try {
-      const transport = Net.RTCTransport();
+      const ice = await Net.iceConfig();
+      duo.bridge = ice;
+      const transport = Net.RTCTransport(ice.servers);
       attach(transport);
       await transport.joinWithInvite(code, (type) => {
         if (type === 'srflx' || type === 'relay') {

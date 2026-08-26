@@ -86,6 +86,28 @@ A fondo pagina c'è la **versione** in uso: deve essere la stessa sui due telefo
 Se dopo un aggiornamento vedi ancora quella vecchia, il telefono sta servendo una
 copia in cache — chiudi e riapri la scheda.
 
+### 🌉 Il ponte (TURN), per la rete mobile
+
+Sulla rete mobile il collegamento diretto **non può riuscire**: gli operatori
+usano un NAT che il peer-to-peer non attraversa. Un server TURN inoltra i
+pacchetti per conto dei due giocatori e risolve il problema.
+
+È **disattivato di serie**: senza configurarlo il gioco resta peer-to-peer puro,
+come è sempre stato. Per attivarlo servono un account Cloudflare e cinque minuti:
+il procedimento è in **[`turn-worker/README.md`](turn-worker/README.md)**, e
+l'indirizzo del ponte si mette in [`config.js`](config.js).
+
+Due cose da sapere prima di attivarlo:
+
+- **con il ponte il traffico può passare da un server di Cloudflare** — cifrato,
+  ma non più strettamente da dispositivo a dispositivo. È il punto in cui la
+  promessa «nessun dato lascia il dispositivo» smette di valere alla lettera;
+- il TURN ha una **soglia gratuita mensile**, oltre la quale si paga a GB. Un
+  duello muove pochissimo, ma la quota è la tua.
+
+Il referto sotto il codice dice sempre se il ponte è `attivo`, `non configurato`
+o `non raggiungibile`. Se non risponde, il gioco prova comunque in diretta.
+
 ### 🎯 Sfida con un codice (senza collegamento)
 
 Se il collegamento diretto non riesce — succede su alcune reti mobili o aziendali,
@@ -146,9 +168,11 @@ comunque: salvataggio e record vengono semplicemente ignorati.
 Sudoku/
 ├── index.html   # struttura della pagina
 ├── style.css    # stile e layout responsive
-├── net.js       # trasporto: WebRTC e codici di collegamento (nessun DOM)
+├── config.js    # indirizzo del ponte TURN (unica cosa da configurare)
+├── net.js       # trasporto: WebRTC, ponte e codici di collegamento (nessun DOM)
 ├── script.js    # motore di gioco (generatore, stato, interazione)
-└── duo.js       # duello in due: protocollo, regole, interfaccia
+├── duo.js       # duello in due: protocollo, regole, interfaccia
+└── turn-worker/ # il ponte TURN: Worker Cloudflare + istruzioni
 ```
 
 Il puzzle è generato da un **seed**: a parità di seed la griglia è identica su

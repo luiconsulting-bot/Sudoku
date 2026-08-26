@@ -200,6 +200,80 @@
     { urls: 'stun:stun.cloudflare.com:3478' },
   ];
 
+  /* ---------- Il ponte (TURN) ---------- */
+
+  // Lo STUN dice a un dispositivo qual è il suo indirizzo pubblico, ma non serve
+  // a nulla quando la rete non lascia passare il traffico diretto — il caso
+  // tipico della rete mobile. Lì serve un TURN, che inoltra i pacchetti per
+  // conto dei due peer.
+  //
+  // Le credenziali TURN non possono stare qui: questa pagina è pubblica e
+  // chiunque le userebbe. Vengono quindi chieste a un endpoint che le conia a
+  // scadenza (un Worker Cloudflare, vedi turn-worker/), tenendo il token segreto
+  // dalla sua parte. Senza endpoint configurato non cambia niente: si resta
+  // peer-to-peer puro, che è il comportamento predefinito.
+
+  const TURN_FETCH_TIMEOUT_MS = 5000;
+  const TURN_OVERRIDE_KEY = 'sudoku.turn.v1';
+
+  function turnEndpoint() {
+    try {
+      // `?turn=<url>` permette di provare un endpoint senza ripubblicare il
+      // sito; una volta indicato resta memorizzato. `?turn=` vuoto lo azzera.
+      const fromUrl = new URLSearchParams(location.search).get('turn');
+      if (fromUrl !== null) {
+        if (fromUrl) localStorage.setItem(TURN_OVERRIDE_KEY, fromUrl);
+        else localStorage.removeItem(TURN_OVERRIDE_KEY);
+      }
+      const saved = localStorage.getItem(TURN_OVERRIDE_KEY);
+      if (saved) return saved;
+    } catch { /* localStorage non disponibile: si usa la configurazione */ }
+    const cfg = window.SUDOKU_CONFIG;
+    return (cfg && cfg.turnEndpoint) || '';
+  }
+
+  // Accetta le forme in cui i vari servizi restituiscono gli ICE server:
+  // { iceServers: {...} } (Cloudflare), { iceServers: [...] }, oppure un array
+  function normalizeIceServers(data) {
+    const raw = data && data.iceServers !== undefined ? data.iceServers : data;
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return list.filter((s) => s && s.urls && (
+      Array.isArray(s.urls) ? s.urls.length : String(s.urls).length
+    ));
+  }
+
+  let icePromise = null;
+
+  // Risolve una volta sola per sessione: le credenziali hanno una scadenza
+  // lunga e non ha senso chiederle a ogni partita.
+  function iceConfig() {
+    if (icePromise) return icePromise;
+    const endpoint = turnEndpoint();
+
+    if (!endpoint) {
+      icePromise = Promise.resolve({ servers: ICE_SERVERS, bridge: 'off' });
+      return icePromise;
+    }
+
+    icePromise = (async () => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TURN_FETCH_TIMEOUT_MS);
+        const res = await fetch(endpoint, { signal: controller.signal });
+        clearTimeout(timer);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const extra = normalizeIceServers(await res.json());
+        if (extra.length === 0) throw new Error('risposta senza iceServers');
+        return { servers: ICE_SERVERS.concat(extra), bridge: 'on', count: extra.length };
+      } catch (err) {
+        // Il ponte non deve mai impedire un tentativo diretto: se non risponde
+        // si prosegue senza, dicendolo.
+        return { servers: ICE_SERVERS, bridge: 'error', error: err.message || String(err) };
+      }
+    })();
+    return icePromise;
+  }
+
   // Quali candidati contiene un SDP. Serve a sapere *prima* di condividere un
   // codice se quel codice ha qualche speranza di funzionare fuori dalla LAN.
   function candidateSummary(sdp) {
@@ -267,8 +341,8 @@
     });
   }
 
-  function RTCTransport() {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  function RTCTransport(iceServers) {
+    const pc = new RTCPeerConnection({ iceServers: iceServers || ICE_SERVERS });
     const handlers = { message: null, state: null };
     let dc = null;
     let closed = false;
@@ -354,6 +428,9 @@
     PROTO: 1,
     LocalTransport,
     RTCTransport,
+    iceConfig,
+    turnEndpoint,
+    normalizeIceServers,
     encodeDesc,
     decodeDesc,
     extractCode,
