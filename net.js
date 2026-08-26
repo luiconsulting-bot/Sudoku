@@ -39,6 +39,27 @@
     return new TextDecoder().decode(bytes);
   }
 
+  // Con il ponte attivo un telefono può produrre venti e più candidati, e il
+  // codice arriva a superare i mille caratteri — scomodo da mandare e da
+  // incollare. Per collegarsi ne bastano pochi: si tengono i migliori di ogni
+  // tipo, per priorità decrescente, conservando l'ordine originale.
+  const MAX_PER_TYPE = 2;
+
+  function trimCandidates(cands) {
+    const perTipo = new Map();
+    for (const c of cands) {
+      const lista = perTipo.get(c[0]) || [];
+      lista.push(c);
+      perTipo.set(c[0], lista);
+    }
+    const tenuti = new Set();
+    for (const lista of perTipo.values()) {
+      lista.sort((a, b) => b[3] - a[3]); // priorità ICE decrescente
+      for (const c of lista.slice(0, MAX_PER_TYPE)) tenuti.add(c);
+    }
+    return cands.filter((c) => tenuti.has(c));
+  }
+
   // SDP → array compatto, oppure null se manca qualcosa di essenziale
   function compactSdp(sdp) {
     const one = (re) => {
@@ -67,7 +88,7 @@
     }
     if (cands.length === 0) return null; // senza candidati il codice è inservibile
 
-    return [1, ufrag, pwd, fp.replace(/:/g, ''), setupIdx, cands];
+    return [1, ufrag, pwd, fp.replace(/:/g, ''), setupIdx, trimCandidates(cands)];
   }
 
   // Array compatto → SDP valido per un canale dati
@@ -393,9 +414,15 @@
         return pc.localDescription.sdp;
       },
 
-      // Host: applica la risposta del guest e la connessione si apre
+      // Host: applica la risposta del guest e la connessione si apre.
+      // Una risposta si applica una volta sola: dopo, lo stato è `stable` e un
+      // secondo tentativo fallirebbe con un errore incomprensibile. Succede
+      // facilmente, perché incollare avvia il collegamento da sé e chi preme
+      // comunque «Collega» ne scatena un altro.
       async acceptAnswer(code) {
+        if (pc.signalingState !== 'have-local-offer') return false;
         await pc.setRemoteDescription({ type: 'answer', sdp: decodeDesc(code) });
+        return true;
       },
 
       // Guest: applica l'invito e restituisce l'SDP della risposta

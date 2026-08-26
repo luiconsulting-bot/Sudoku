@@ -430,7 +430,13 @@
     duo.connecting = true;
     setStatus(el.hostStatus, 'Collego…');
     try {
-      await duo.transport.acceptAnswer(code);
+      const applicata = await duo.transport.acceptAnswer(code);
+      if (applicata === false) {
+        // La risposta era già stata applicata: incollare avvia il collegamento
+        // da sé, quindi premere «Collega» dopo è normale e non è un errore.
+        setStatus(el.hostStatus, 'Risposta già accettata: sto collegando…');
+        return;
+      }
       watchHandshake(el.hostStatus);
     } catch (err) {
       setStatus(el.hostStatus, 'Codice di risposta non valido: ' + err.message, 'bad');
