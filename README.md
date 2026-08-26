@@ -184,8 +184,24 @@ Sudoku/
 ├── net.js       # trasporto: WebRTC, ponte e codici di collegamento (nessun DOM)
 ├── script.js    # motore di gioco (generatore, stato, interazione)
 ├── duo.js       # duello in due: protocollo, regole, interfaccia
-└── turn-worker/ # il ponte TURN: Worker Cloudflare + istruzioni
+├── turn-worker/ # il ponte TURN: Worker Cloudflare + istruzioni
+└── test/        # suite di prove: ./test/run.sh
 ```
+
+## 🧪 Prove
+
+```bash
+./test/run.sh              # tutte (103 controlli)
+./test/run.sh test-duel    # una sola
+```
+
+Lo script avvia da sé il server statico e un endpoint TURN finto. Serve
+[Playwright](https://playwright.dev) con Chromium — è l'unica dipendenza del
+progetto, e solo per le prove: il gioco non ne ha nessuna.
+
+Fra le prove c'è un **duello capo a capo con WebRTC reale** tra due contesti
+browser, la non-regressione del single player, e il comportamento del ponte
+quando è spento, guasto o risponde male.
 
 Il puzzle è generato da un **seed**: a parità di seed la griglia è identica su
 qualunque browser, ed è ciò che permette a due dispositivi di giocare lo stesso

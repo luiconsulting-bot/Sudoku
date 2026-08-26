@@ -3,8 +3,15 @@
 Documento di progettazione della modalità a due giocatori su **dispositivi diversi**
 (due PC, due telefoni, PC + telefono). Da rivedere e discutere *prima* di scrivere codice.
 
-Stato: **duello realizzato** (fasi 1–4 di §14). Il co-op (§6) resta da fare.
-Le decisioni prese durante la realizzazione sono annotate in §16.
+Stato: **duello realizzato** (fasi 1–4 di §14), con l'aggiunta del **ponte TURN**
+non previsto all'inizio (§15, punto 10). Il co-op (§6) resta da fare.
+
+Verificato sul campo: single player, duello fra due schede dello stesso browser,
+duello sulla stessa Wi-Fi. **Da confermare**: due telefoni in rete mobile e due
+Wi-Fi diverse — il caso per cui il ponte esiste.
+
+Le decisioni prese lungo la strada sono in §15, le verifiche in §16. Chi riprende
+il lavoro parta da `CLAUDE.md`, che raccoglie i tranelli già pagati.
 
 ---
 
