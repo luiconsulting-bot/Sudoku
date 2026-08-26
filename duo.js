@@ -221,25 +221,54 @@
   // Senza un indirizzo raggiungibile da fuori il codice vale solo dentro la
   // stessa rete: meglio dirlo prima di mandarlo, invece di lasciare che il
   // collegamento fallisca senza spiegazioni.
-  function localOnlyWarning() {
+  // Diagnosi unica dello stato della rete. Le tre schermate che ne parlano
+  // devono dire la stessa cosa: prima erano tre testi separati, e infatti sono
+  // invecchiati ognuno per conto suo quando è arrivato il ponte — parlavano di
+  // «nessun server intermedio» mentre il ponte era già in funzione.
+  //
+  //   warning — prima di condividere il codice: vale la pena mandarlo?
+  //   failure — dopo un tentativo fallito: di chi è il problema e cosa si fa?
+  function networkDiagnosis() {
     const s = netSummary();
-    if (!s) return null;
+    const b = duo.bridge && duo.bridge.bridge;
+    const relay = s ? s.relay : 0;
+    const routable = s ? s.routable : 0;
 
-    if (s.routable === 0) {
-      return 'Non ho trovato un indirizzo pubblico: questo codice funzionerà solo se '
-        + 'siete sulla stessa rete Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+    let warning = null;
+    if (s) {
+      if (b === 'on' && relay === 0) {
+        warning = 'Il ponte risponde ma non ha fornito un suo indirizzo: controlla la '
+          + 'TURN Server App su Cloudflare. Senza, in rete mobile non funzionerà.';
+      } else if (relay === 0 && routable === 0) {
+        warning = b === 'error'
+          ? 'Il ponte non risponde e il telefono non ha un indirizzo pubblico: '
+            + 'questo codice vale solo sulla stessa rete Wi-Fi.'
+          : 'Nessun indirizzo pubblico: questo codice vale solo sulla stessa rete '
+            + 'Wi-Fi. Su reti diverse usate «Sfida con un codice».';
+      }
     }
 
-    // Il ponte risponde ma non ha prodotto un indirizzo: le credenziali arrivano
-    // e non servono a niente. È diverso da «ponte assente» e va detto, perché il
-    // rimedio sta su Cloudflare, non nella rete dei due giocatori.
-    if (duo.bridge && duo.bridge.bridge === 'on' && s.relay === 0) {
-      return 'Il ponte risponde ma non ha fornito un indirizzo utilizzabile: '
-        + 'controlla la TURN Server App su Cloudflare. In rete mobile il '
-        + 'collegamento probabilmente non riuscirà.';
+    let failure;
+    if (relay > 0) {
+      // Il caso raro: il ponte era davvero in uso e non è bastato.
+      failure = 'Nessun collegamento, nonostante il ponte fosse in uso. Prova a '
+        + 'generare un nuovo invito; se si ripete, mettetevi sulla stessa Wi-Fi.';
+    } else if (b === 'on') {
+      failure = 'Nessun collegamento. Il ponte risponde ma non fornisce un suo '
+        + 'indirizzo: il problema è nella TURN Server App su Cloudflare.';
+    } else if (routable === 0) {
+      failure = 'Nessun collegamento. Il tuo telefono non ha esposto un indirizzo '
+        + 'pubblico: mettetevi sulla stessa rete Wi-Fi e riprovate.';
+    } else {
+      failure = 'Nessun collegamento. Gli indirizzi c’erano, ma la rete non lascia '
+        + 'passare il collegamento diretto: è tipico della rete mobile, e senza '
+        + 'ponte non c’è rimedio. Provate sulla stessa Wi-Fi.';
     }
-    return null;
+
+    return { warning, failure };
   }
+
+  const localOnlyWarning = () => networkDiagnosis().warning;
 
   const netSummary = () =>
     (duo.transport && duo.transport.summary ? duo.transport.summary() : null);
@@ -316,9 +345,8 @@
       }
       updateLink('ok');
     } else if (st === 'failed') {
-      const msg = 'Collegamento non riuscito. Provate sulla stessa rete Wi-Fi, '
-        + 'oppure usate la sfida con codice.';
-      setStatus(duo.role === 'host' ? el.hostStatus : el.guestStatus, msg, 'bad');
+      setStatus(duo.role === 'host' ? el.hostStatus : el.guestStatus,
+        networkDiagnosis().failure, 'bad');
       updateLink('bad');
     } else if (st === 'closed') {
       updateLink('bad');
@@ -419,16 +447,7 @@
     clearTimeout(duo.handshakeId);
     duo.handshakeId = setTimeout(() => {
       if (duo.phase !== 'connecting' || !duo.transport) return; // già partito
-      const s = netSummary();
-      const senzaPubblico = !s || s.routable === 0;
-      setStatus(node, senzaPubblico
-        ? 'Nessun collegamento. Il tuo telefono non ha esposto un indirizzo pubblico: '
-          + 'mettetevi sulla stessa rete Wi-Fi e riprovate.'
-        : 'Nessun collegamento. Gli indirizzi c’erano, ma la rete non lascia passare '
-          + 'il collegamento diretto: è tipico della rete mobile. '
-          + (duo.bridge && duo.bridge.bridge === 'on'
-            ? 'Il ponte era attivo ma non è bastato: provate sulla stessa Wi-Fi.'
-            : 'Serve il ponte (TURN), oppure mettetevi sulla stessa Wi-Fi.'), 'bad');
+      setStatus(node, networkDiagnosis().failure, 'bad');
     }, HANDSHAKE_TIMEOUT_MS);
   }
 

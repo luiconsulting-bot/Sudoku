@@ -36,8 +36,10 @@ Premi **👥** nella barra in alto. Il duello si gioca su **due dispositivi dive
 (due PC, due telefoni, PC + telefono): stesso puzzle, due griglie separate,
 **vince chi completa per primo**.
 
-Il collegamento è **diretto tra i due browser** (WebRTC): non c'è alcun server, e
-nessun dato passa da terzi. In cambio, l'invito va scambiato una volta a mano:
+Il collegamento si apre **direttamente tra i due browser** (WebRTC). Quando la
+rete non lo consente — il caso tipico della rete mobile — subentra il
+**ponte** (§ più sotto), che inoltra i messaggi per conto dei due giocatori.
+In entrambi i casi l'invito va scambiato una volta a mano:
 
 1. Chi crea la partita preme **Crea una partita** e manda il **link** con
    «Condividi» (WhatsApp, Telegram, quello che vuoi).
@@ -72,15 +74,20 @@ caduta non ti costa la partita.
 
 ### Se non si collega
 
-Sotto il codice compare il **referto degli indirizzi** trovati, e dice quale dei
-due problemi hai davanti:
+Sotto il codice compare il **referto degli indirizzi** trovati. È la diagnosi, e
+distingue casi che hanno rimedi diversi:
 
-- **«nessun indirizzo pubblico»** → il tuo telefono non è raggiungibile da fuori:
-  mettetevi sulla **stessa rete Wi-Fi**.
-- **indirizzi pubblici presenti, ma nessun collegamento dopo ~25 secondi** → la
-  rete non lascia passare il traffico diretto. È il caso tipico della **rete
-  mobile**, dove gli operatori usano un NAT che il peer-to-peer non attraversa:
-  nessun numero di tentativi lo risolve, serve la Wi-Fi o la sfida con codice.
+| Referto | Cosa significa | Rimedio |
+|---|---|---|
+| «… **1 dal ponte**» · `Ponte: attivo` | tutto a posto | dovrebbe collegarsi su qualsiasi rete |
+| `Ponte: attivo` ma **nessun** «dal ponte» | le credenziali arrivano, l'indirizzo no | il problema è nella TURN Server App su Cloudflare |
+| `Ponte: non raggiungibile` | il Worker non risponde | controlla l'indirizzo in `config.js` e `ALLOWED_ORIGIN` |
+| `Ponte: non configurato` | il gioco non sa dove chiedere | vedi la sezione sul ponte |
+| nessun indirizzo pubblico, nessun ponte | il telefono non è raggiungibile da fuori | stessa rete Wi-Fi |
+
+Senza ponte il collegamento diretto riesce quasi sempre sulla **stessa Wi-Fi** e
+quasi mai in **rete mobile**, dove gli operatori usano un NAT che il
+peer-to-peer non attraversa.
 
 A fondo pagina c'è la **versione** in uso: deve essere la stessa sui due telefoni.
 Se dopo un aggiornamento vedi ancora quella vecchia, il telefono sta servendo una
@@ -92,16 +99,17 @@ Sulla rete mobile il collegamento diretto **non può riuscire**: gli operatori
 usano un NAT che il peer-to-peer non attraversa. Un server TURN inoltra i
 pacchetti per conto dei due giocatori e risolve il problema.
 
-È **disattivato di serie**: senza configurarlo il gioco resta peer-to-peer puro,
-come è sempre stato. Per attivarlo servono un account Cloudflare e cinque minuti:
-il procedimento è in **[`turn-worker/README.md`](turn-worker/README.md)**, e
-l'indirizzo del ponte si mette in [`config.js`](config.js).
+**In questo progetto è attivo**: l'indirizzo del Worker è in
+[`config.js`](config.js). Chi riparte da zero lo trova disattivato — senza
+configurarlo il gioco resta peer-to-peer puro — e il procedimento per accenderlo
+è in **[`turn-worker/README.md`](turn-worker/README.md)**.
 
 Due cose da sapere prima di attivarlo:
 
 - **con il ponte il traffico può passare da un server di Cloudflare** — cifrato,
-  ma non più strettamente da dispositivo a dispositivo. È il punto in cui la
-  promessa «nessun dato lascia il dispositivo» smette di valere alla lettera;
+  ma non più strettamente da dispositivo a dispositivo. Succede solo quando il
+  collegamento diretto fallisce, ma è il punto in cui la promessa «nessun dato
+  lascia il dispositivo» smette di valere alla lettera per la partita in due;
 - Cloudflare chiede un metodo di pagamento per attivare Realtime, ma la soglia
   gratuita è **1.000 GB al mese**. Un duello di venti minuti ne consuma **circa
   1 MB**: oltre un milione di duelli al mese starebbero dentro la soglia. I
@@ -112,8 +120,8 @@ o `non raggiungibile`. Se non risponde, il gioco prova comunque in diretta.
 
 ### 🎯 Sfida con un codice (senza collegamento)
 
-Se il collegamento diretto non riesce — succede su alcune reti mobili o aziendali,
-perché non usiamo server intermedi — resta la via che **funziona sempre**: in
+Se il collegamento non riesce comunque — ponte compreso — resta la via che
+**funziona sempre**, perché non richiede alcun collegamento: in
 **👥 → Sfida con un codice** trovi il codice della tua partita, per esempio
 `MEDIO-7F3A2B`. Mandalo a chi vuoi: aprendolo giocherà **lo stesso puzzle**, quando
 gli fa comodo, e poi vi confrontate i tempi. Nessuna connessione, nessuna attesa.
@@ -147,7 +155,9 @@ Nella schermata delle iniziali si digitano le 3 lettere, oppure si usano le frec
 
 ## 💾 Dati salvati
 
-Tutto resta **in locale nel browser** (`localStorage`), nessun dato lascia il dispositivo:
+Tutto resta **in locale nel browser** (`localStorage`): record, statistiche e
+partite salvate non lasciano mai il dispositivo. Fa eccezione, durante un duello,
+il traffico di gioco quando passa dal ponte — vedi la sezione sul ponte.
 
 | Chiave | Contenuto |
 |--------|-----------|

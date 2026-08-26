@@ -7,7 +7,7 @@
   <meta name="description" content="Gioca a Sudoku nel browser: quattro livelli di difficoltà, note, suggerimenti, timer e record personali." />
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Cg stroke='white' stroke-width='6' opacity='.9'%3E%3Cpath d='M36 12v76M64 12v76M12 36h76M12 64h76'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=2026.08.08-7" />
+  <link rel="stylesheet" href="style.css?v=2026.08.08-8" />
 </head>
 <body>
   <div class="app">
@@ -219,15 +219,22 @@
         <details class="duo__help">
           <summary>Non si collega?</summary>
           <ul>
-            <li><strong>L’invito invecchia.</strong> Il varco aperto nel router
-              dura poco: se dalla creazione è passato più di un minuto, premi
-              «Genera un nuovo invito» e rimanda il link.</li>
-            <li><strong>Provate sulla stessa rete Wi-Fi.</strong> È lo scenario
-              che riesce quasi sempre. Su rete mobile il collegamento diretto
-              spesso non è possibile.</li>
-            <li><strong>Se non riesce comunque</strong>, usa
-              <em>Sfida con un codice</em>: giocate lo stesso puzzle senza
-              collegamento e confrontate i tempi.</li>
+            <li><strong>Guarda la riga «Indirizzi trovati».</strong> È la
+              diagnosi: dice se c’è un indirizzo pubblico, se il ponte è attivo
+              e se ha fornito un suo indirizzo. Ogni caso ha un rimedio diverso.</li>
+            <li><strong>Con «dal ponte» tra gli indirizzi</strong> il
+              collegamento dovrebbe riuscire su qualsiasi rete, anche mobile.
+              Se non riesce lo stesso, genera un nuovo invito e riprova.</li>
+            <li><strong>Senza «dal ponte»</strong> resta il collegamento
+              diretto: funziona sulla stessa Wi-Fi, molto meno in rete mobile.
+              Se il ponte risulta attivo ma non compare, il problema è nella
+              TURN Server App su Cloudflare.</li>
+            <li><strong>L’invito invecchia.</strong> Se dalla creazione è
+              passato più di un minuto, premi «Genera un nuovo invito» e rimanda
+              il link.</li>
+            <li><strong>In ultima istanza</strong>, usa <em>Sfida con un
+              codice</em>: giocate lo stesso puzzle senza alcun collegamento e
+              confrontate i tempi.</li>
           </ul>
           <label class="duo__check">
             <input type="checkbox" id="duo-long" />
@@ -318,9 +325,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=2026.08.08-7"></script>
-  <script src="net.js?v=2026.08.08-7"></script>
-  <script src="script.js?v=2026.08.08-7"></script>
-  <script src="duo.js?v=2026.08.08-7"></script>
+  <script src="config.js?v=2026.08.08-8"></script>
+  <script src="net.js?v=2026.08.08-8"></script>
+  <script src="script.js?v=2026.08.08-8"></script>
+  <script src="duo.js?v=2026.08.08-8"></script>
 </body>
 </html>
