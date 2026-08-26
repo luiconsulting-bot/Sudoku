@@ -72,6 +72,39 @@ le stesse indicazioni — è la stessa prova, fatta un passo più avanti.
 
 ## 2. Pubblicare il Worker
 
+Due strade. Se il progetto non ce l'hai sul computer — perché il gioco vive su
+GitHub Pages e basta — la prima è quella giusta: **non serve installare niente**.
+
+### A. Dal pannello Cloudflare, senza terminale
+
+1. **Workers & Pages → Create → Create Worker**. Chiamalo `sudoku-turn` e premi
+   **Deploy** (il codice di esempio va bene, lo sostituiamo subito).
+2. **Edit code**: cancella tutto e incolla il contenuto di
+   [`worker.js`](worker.js) — su GitHub, dal pulsante *Copy raw file*. Poi
+   **Deploy**.
+3. **Settings → Variables and Secrets**, aggiungi:
+
+   | Nome | Tipo | Valore |
+   |---|---|---|
+   | `TURN_KEY_ID` | testo | il valore **corto** del passo 1 |
+   | `ALLOWED_ORIGIN` | testo | `https://luiconsulting-bot.github.io` |
+   | `TTL` | testo | `3600` |
+   | `TURN_KEY_API_TOKEN` | **Secret** | il valore **lungo** del passo 1 |
+
+   Il token va aggiunto come *Secret* (cifrato), non come variabile in chiaro:
+   è la ragione per cui questo Worker esiste.
+4. **Deploy** di nuovo, perché le variabili siano attive.
+
+L'indirizzo è del tipo `https://sudoku-turn.tuonome.workers.dev` ed è scritto in
+cima alla pagina del Worker.
+
+**Verifica subito**: apri quell'indirizzo nel browser. Deve rispondere con un
+JSON contenente `iceServers` e degli indirizzi `turn:`. Se invece compare un
+messaggio d'errore, lo dice in chiaro cosa non va — di solito i due valori del
+passo 1 invertiti.
+
+### B. Da riga di comando, se hai il progetto in locale
+
 ```bash
 cd turn-worker
 npx wrangler deploy
@@ -80,18 +113,15 @@ npx wrangler deploy
 npx wrangler secret put TURN_KEY_API_TOKEN
 ```
 
-Il `Key ID` e l'origine del gioco stanno in `wrangler.toml`, che non contiene
+Il Token ID e l'origine del gioco stanno in `wrangler.toml`, che non contiene
 nulla di segreto:
 
 ```toml
 [vars]
-TURN_KEY_ID    = "il-tuo-key-id"
+TURN_KEY_ID    = "il-tuo-token-id"
 ALLOWED_ORIGIN = "https://luiconsulting-bot.github.io"
 TTL            = "3600"
 ```
-
-Al termine `wrangler` stampa l'indirizzo, del tipo
-`https://sudoku-turn.tuonome.workers.dev`.
 
 ## 3. Collegarlo al gioco
 
