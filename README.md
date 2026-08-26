@@ -102,8 +102,10 @@ Due cose da sapere prima di attivarlo:
 - **con il ponte il traffico può passare da un server di Cloudflare** — cifrato,
   ma non più strettamente da dispositivo a dispositivo. È il punto in cui la
   promessa «nessun dato lascia il dispositivo» smette di valere alla lettera;
-- il TURN ha una **soglia gratuita mensile**, oltre la quale si paga a GB. Un
-  duello muove pochissimo, ma la quota è la tua.
+- Cloudflare chiede un metodo di pagamento per attivare Realtime, ma la soglia
+  gratuita è **1.000 GB al mese**. Un duello di venti minuti ne consuma **circa
+  1 MB**: oltre un milione di duelli al mese starebbero dentro la soglia. I
+  conti per esteso sono in [`turn-worker/README.md`](turn-worker/README.md).
 
 Il referto sotto il codice dice sempre se il ponte è `attivo`, `non configurato`
 o `non raggiungibile`. Se non risponde, il gioco prova comunque in diretta.

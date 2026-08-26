@@ -80,12 +80,44 @@ Apri **👥 → Crea una partita** e guarda il referto sotto il codice:
 
 ---
 
-## Costi e limiti, detti chiaramente
+## Quanto può costare
 
-- Il TURN di Cloudflare ha una **soglia gratuita mensile**, oltre la quale si
-  paga a GB. Un duello muove pochissimo — i messaggi sono minuscoli e passano di
-  lì solo se il collegamento diretto fallisce — quindi il consumo atteso è
-  irrisorio. Ma è la **tua** quota: tienila d'occhio nel pannello Cloudflare.
+Cloudflare chiede un metodo di pagamento per attivare Realtime, ma la soglia
+gratuita è **1.000 GB al mese** e oltre quella si paga **$0,05/GB**. La domanda
+vera è quanto consuma un duello. Misurato sui messaggi reali del protocollo:
+
+| Messaggio | Dimensione |
+|---|---|
+| `progress` (una volta al secondo) | 156 byte |
+| `ping` / `pong` (ogni 2 secondi) | 12 byte |
+
+Con il sovraccarico di rete nel caso peggiore (SCTP + DTLS + TURN + UDP/IP,
+~124 byte a pacchetto) si arriva a **~416 byte al secondo per giocatore**:
+
+| Durata del duello | Traffico inoltrato | Duelli nella soglia gratuita |
+|---|---|---|
+| 10 minuti | 0,5 MB | ~2.150.000 |
+| 20 minuti | 1,0 MB | ~1.075.000 |
+| 45 minuti | 2,1 MB | ~478.000 |
+
+**Un duello da venti minuti costa cinque centesimi di millesimo di dollaro**, e
+solo se fossi già oltre soglia: servirebbero **oltre ventimila duelli** per un
+singolo dollaro. Giocando ogni giorno per tutta la vita non ti avvicineresti al
+limite.
+
+E c'è dell'altro: il relay viene usato **solo quando il collegamento diretto
+fallisce**. Su Wi-Fi ICE preferisce il percorso diretto e dal ponte non passa
+praticamente nulla.
+
+L'unico modo realistico di spendere è che **qualcun altro** usi il tuo Worker per
+il proprio traffico. Per questo:
+
+- tieni `ALLOWED_ORIGIN` valorizzato (è già così in `wrangler.toml`);
+- imposta una **notifica di spesa** nel pannello Cloudflare: è la rete di
+  sicurezza vera, perché ti avvisa prima che il conto salga;
+- se qualcosa andasse storto, l'interruttore è immediato: **elimina la chiave
+  TURN** o svuota `turnEndpoint`. Il gioco torna al collegamento diretto e
+  continua a funzionare — il ponte non è mai indispensabile.
 - **L'indirizzo del Worker è pubblico.** `ALLOWED_ORIGIN` scoraggia l'uso da
   altri siti ma non è una barriera: l'intestazione `Origin` la manda il browser
   e chi usa strumenti da riga di comando può scrivere ciò che vuole. Le difese
