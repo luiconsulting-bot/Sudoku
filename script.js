@@ -16,7 +16,7 @@ const DIFFICULTY = {
 // e <link> in index.html: quel parametro è ciò che costringe telefoni e proxy a
 // riscaricare i file invece di riusare una copia vecchia in cache, e il numero a
 // schermo è ciò che permette di sapere quale build sta davvero girando.
-const APP_VERSION = '2026.08.26-1';
+const APP_VERSION = '2026.08.26-2';
 
 const MAX_MISTAKES = 3;
 const MAX_HINTS = 3;

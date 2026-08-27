@@ -480,6 +480,14 @@
   // provato qualcosa e cosa ha risposto. Zero coppie con candidati da entrambe
   // le parti significa che nessuna combinazione era compatibile — il sintomo
   // delle due famiglie di indirizzi che non si incontrano.
+  //
+  // Non basta però contarle: «46 fallite» non distingue i due guasti che
+  // contano. Se le richieste sono partite e nessuna è tornata, i pacchetti si
+  // perdono per strada (rete che filtra, o allocazione sul ponte ormai
+  // scaduta); se non è partita nemmeno una richiesta, la porta locale non
+  // esisteva più. Perciò si contano anche richieste e risposte, divise per
+  // tipo di coppia: relay↔relay è quella che con il ponte non dovrebbe mai
+  // fallire.
   async function pairReport(pc) {
     const righe = [];
     try {
@@ -491,14 +499,26 @@
         if (x.type === 'remote-candidate') remoti.set(x.id, x);
       });
       const conta = new Map();
+      const gruppi = new Map();
       let scelta = null;
       stats.forEach((x) => {
         if (x.type !== 'candidate-pair') return;
         conta.set(x.state, (conta.get(x.state) || 0) + 1);
         if (x.nominated || x.selected) scelta = x;
+        const l = locali.get(x.localCandidateId);
+        const r = remoti.get(x.remoteCandidateId);
+        const chiave = `${l ? l.candidateType : '?'}→${r ? r.candidateType : '?'}`;
+        const g = gruppi.get(chiave) || { n: 0, inviate: 0, risposte: 0 };
+        g.n += 1;
+        g.inviate += x.requestsSent || 0;
+        g.risposte += x.responsesReceived || 0;
+        gruppi.set(chiave, g);
       });
       const parti = [...conta].map(([st, n]) => `${st} ${n}`);
       righe.push('coppie: ' + (parti.join(' · ') || 'nessuna'));
+      for (const [chiave, g] of gruppi) {
+        righe.push(`  ${chiave}: ${g.n} — richieste ${g.inviate}, risposte ${g.risposte}`);
+      }
       const descrivi = (c) => (c
         ? `${c.candidateType} ${c.address || '(nascosto)'}:${c.port}`
         : '?');
