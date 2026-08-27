@@ -131,7 +131,10 @@ log('✓ pausa disattivata (con avviso) e comandi del solo nascosti');
 // è avanti senza smettere di giocare.
 {
   const disposizione = await guest.evaluate(() => {
+    // I nascosti vanno esclusi: in duello «Record» è ancora nel DOM, ma non
+    // occupa nessuna colonna.
     const sinistre = (sel) => [...document.querySelectorAll(sel)]
+      .filter((n) => !n.hidden)
       .map((n) => Math.round(n.getBoundingClientRect().left));
     const mine = document.querySelector('.toolbar__stats');
     const hud = document.getElementById('duo-hud');
@@ -144,7 +147,10 @@ log('✓ pausa disattivata (con avviso) e comandi del solo nascosti');
         <= Math.ceil(document.getElementById('board').getBoundingClientRect().top),
       colonneAvversario: sinistre('.duo-hud__stats .stat'),
       colonneMie: sinistre('.duo-mine__body .stat'),
-      etichette: [...document.querySelectorAll('.duo-mine__body .stat__label')]
+      etichette: [...document.querySelectorAll('.duo-mine__body .stat')]
+        .filter((n) => !n.hidden)
+        .map((n) => n.querySelector('.stat__label').textContent),
+      etichetteAvversario: [...document.querySelectorAll('.duo-hud__stats .stat__label')]
         .map((n) => n.textContent),
     };
   });
@@ -153,7 +159,10 @@ log('✓ pausa disattivata (con avviso) e comandi del solo nascosti');
   assert.ok(disposizione.celleVisibili, '«Celle» compare in duello');
   assert.ok(disposizione.sottoAvversario, 'stanno sotto l’avversario');
   assert.ok(disposizione.sopraGriglia, 'e sopra la griglia');
-  assert.deepEqual(disposizione.etichette, ['Tempo', 'Celle', 'Errori', 'Record']);
+  assert.deepEqual(disposizione.etichette, ['Tempo', 'Celle', 'Errori', 'Aiuti'],
+    'le quattro etichette sono identiche a quelle dell’avversario');
+  assert.deepEqual(disposizione.etichette, disposizione.etichetteAvversario,
+    'e nello stesso ordine');
   assert.deepEqual(disposizione.colonneMie, disposizione.colonneAvversario,
     `le due righe sono incolonnate: ${JSON.stringify(disposizione)}`);
   log(`✓ dati del giocatore sotto quelli dell'avversario, colonne allineate `
@@ -181,6 +190,15 @@ log('✓ pausa disattivata (con avviso) e comandi del solo nascosti');
   const dopo = await guest.textContent('#filled');
   assert.equal(dopo, `${prima.vere + 1}/81`, `una cella in più: ${dopo}`);
   log(`✓ celle riempite in tempo reale: ${prima.mostrato} → ${dopo}`);
+}
+
+/* --- Anche gli aiuti si contano come li conta l'avversario --- */
+{
+  assert.equal(await guest.textContent('#hints-used'), '0/3', 'si parte da zero aiuti');
+  await guest.click('#hint');
+  await guest.waitForFunction(() => document.getElementById('hints-used').textContent === '1/3',
+    null, { polling: 100, timeout: 5000 });
+  log('✓ aiuti usati contati in tempo reale: 0/3 → 1/3');
 }
 
 /* --- L'avanzamento dell'avversario arriva --- */

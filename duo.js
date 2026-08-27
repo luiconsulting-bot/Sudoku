@@ -1299,10 +1299,16 @@
     const slot = $('duo-mine-slot');
     const cornice = $('duo-mine');
     const celle = $('stat-filled');
+    const aiuti = $('stat-hints');
+    const record = $('stat-best');
     if (!stats || !barra || !slot || !cornice) return;
-    // «Celle» esiste per il confronto con l'avversario: fuori dal duello la
-    // barra del single player resta quella di sempre.
+    // In duello le quattro colonne sono le stesse dell'avversario — tempo,
+    // celle, errori, aiuti — perché il confronto sia un'occhiata e non una
+    // lettura. Il record, in duello, non dice niente di utile: torna quando si
+    // torna a giocare da soli, e con lui la barra di sempre.
     if (celle) celle.hidden = !nelDuello;
+    if (aiuti) aiuti.hidden = !nelDuello;
+    if (record) record.hidden = nelDuello;
     cornice.hidden = !nelDuello;
     (nelDuello ? slot : barra).appendChild(stats);
   }

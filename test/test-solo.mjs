@@ -171,6 +171,7 @@ log('✓ sconfitta al terzo errore');
 {
   const barra = await page.evaluate(() => ({
     celle: !document.getElementById('stat-filled').hidden,
+    aiuti: !document.getElementById('stat-hints').hidden,
     rigaTu: !document.getElementById('duo-mine').hidden,
     aPosto: document.querySelector('.toolbar__stats').parentElement.classList.contains('toolbar'),
     etichette: [...document.querySelectorAll('.toolbar__stats .stat')]
@@ -178,6 +179,7 @@ log('✓ sconfitta al terzo errore');
       .map((n) => n.querySelector('.stat__label').textContent),
   }));
   assert.equal(barra.celle, false, '«Celle» non compare nel single player');
+  assert.equal(barra.aiuti, false, '«Aiuti» nemmeno: qui c’è il record');
   assert.equal(barra.rigaTu, false, 'la riga «Tu» è roba da duello');
   assert.ok(barra.aPosto, 'i dati sono rimasti nella barra in alto');
   assert.deepEqual(barra.etichette, ['Tempo', 'Errori', 'Record'], 'la barra è quella di prima');

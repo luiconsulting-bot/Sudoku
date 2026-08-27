@@ -16,7 +16,7 @@ const DIFFICULTY = {
 // e <link> in index.html: quel parametro è ciò che costringe telefoni e proxy a
 // riscaricare i file invece di riusare una copia vecchia in cache, e il numero a
 // schermo è ciò che permette di sapere quale build sta davvero girando.
-const APP_VERSION = '2026.08.27-3';
+const APP_VERSION = '2026.08.27-4';
 
 const MAX_MISTAKES = 3;
 const MAX_HINTS = 3;
@@ -402,6 +402,7 @@ const $numpad = document.getElementById('numpad');
 const $timer = document.getElementById('timer');
 const $mistakes = document.getElementById('mistakes');
 const $filled = document.getElementById('filled');
+const $hintsUsed = document.getElementById('hints-used');
 const $bestTime = document.getElementById('best-time');
 const $difficulty = document.getElementById('difficulty');
 const $newGame = document.getElementById('new-game');
@@ -586,10 +587,20 @@ function restoreGame() {
 
 function syncHud() {
   updateNotesButton();
-  $hintsLeft.textContent = state.hintsLeft;
+  updateHints();
   updateMistakes();
   updateFilled();
   updateBestTime();
+}
+
+// Gli aiuti si contano in due modi: quanti ne restano (sul pulsante) e quanti
+// ne hai usati (nella riga del duello, come li manda l'avversario). Stanno in
+// una funzione sola perché sono lo stesso numero visto dai due lati.
+function updateHints() {
+  $hintsLeft.textContent = state.hintsLeft;
+  if ($hintsUsed) {
+    $hintsUsed.innerHTML = `${MAX_HINTS - state.hintsLeft}<span class="stat__muted">/${MAX_HINTS}</span>`;
+  }
 }
 
 // Quante celle sono piene. In duello è il confronto più immediato con
@@ -828,7 +839,7 @@ function undo() {
   state.mistakes = prev.mistakes;
   state.hintsLeft = prev.hintsLeft;
   updateMistakes();
-  $hintsLeft.textContent = state.hintsLeft;
+  updateHints();
   render();
   saveGame();
 }
@@ -869,7 +880,7 @@ function useHint() {
   state.given[r][c] = true; // il suggerimento diventa fisso
   state.selected = { r, c };
   state.hintsLeft--;
-  $hintsLeft.textContent = state.hintsLeft;
+  updateHints();
 
   render();
   $board.children[idx(r, c)].classList.add('cell--hint');
