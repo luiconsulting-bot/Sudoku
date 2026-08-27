@@ -72,6 +72,18 @@ cifre** — più tempo, celle completate, errori e aiuti. Se la connessione cade
 scegliere tra **vittoria a tavolino** e **finire il puzzle da solo**: una rete
 caduta non ti costa la partita.
 
+### Lo scambio dei codici
+
+Se il ponte è configurato (vedi `turn-worker/`), invito e risposta se li passano
+i due dispositivi da soli: chi invita riceve un **codice breve** tipo `KLZ-56G`
+da dettare o da mandare come link, chi lo apre è già in partita. Non c'è niente
+da rimandare indietro.
+
+Senza il ponte — o se non risponde — ricompaiono i due passi di sempre: mandi il
+link, ti fai rimandare il codice di risposta, lo incolli. Funziona, ma richiede
+dai trenta ai novanta secondi, e in quel tempo il varco che il router apre verso
+l'esterno può richiudersi.
+
 ### Se non si collega
 
 Sotto il codice compare il referto **«Indirizzi nel codice»**. Sono gli indirizzi

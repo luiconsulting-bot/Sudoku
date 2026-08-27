@@ -53,6 +53,7 @@ else
           test/test-scambio.mjs
           test/test-solo.mjs test/test-duel.mjs test/test-duel-paths.mjs
           test/test-connect.mjs test/test-flow.mjs test/test-diag.mjs
+          test/test-scambio-web.mjs
           test/test-turn.mjs test/test-turn-down.mjs test/test-messaggi.mjs"
 fi
 

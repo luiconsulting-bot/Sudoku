@@ -621,3 +621,15 @@ body.is-duel #pause { display: none; }
   .shadow { align-self: center; }
   .duo-hud__stats { gap: 8px; }
 }
+
+/* Il codice della stanza: si legge ad alta voce al telefono, quindi grande,
+   spaziato e senza ambiguità fra caratteri simili. */
+.duo__room {
+  margin: 0.2rem 0 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(1.9rem, 9vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: center;
+  color: var(--accent);
+}

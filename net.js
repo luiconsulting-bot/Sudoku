@@ -374,6 +374,75 @@
     return icePromise;
   }
 
+  /* ---------- Lo scambio automatico dei codici ---------- */
+
+  // Invito e risposta se li passavano i due giocatori a mano. Non è solo lento
+  // — trenta-novanta secondi fra copia, invio, incolla e reinvio — è fragile:
+  // in quel tempo il varco che il router apre verso l'esterno si richiude, e la
+  // chat dove viaggiano i codici li accumula, cosicché incollare quello del
+  // tentativo prima produce un collegamento che viene accettato e non si apre
+  // mai. Qui invece i codici passano dalla cassetta postale del Worker: chi
+  // invita deposita e riceve un codice breve, chi risponde ritira e deposita la
+  // risposta, chi invita la raccoglie da sé.
+  //
+  // Resta facoltativo: se il Worker non c'è o non risponde, il gioco torna allo
+  // scambio a mano, che continua a funzionare.
+
+  const SCAMBIO_TIMEOUT_MS = 8000;
+
+  async function chiediScambio(coda, opts = {}) {
+    const base = String(turnEndpoint() || '').replace(/\/+$/, '');
+    if (!base) throw new Error('scambio non configurato');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SCAMBIO_TIMEOUT_MS);
+    try {
+      const res = await fetch(base + '/s' + (coda || ''), {
+        method: opts.method || 'GET',
+        signal: controller.signal,
+        headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      const dati = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(dati.errore || dati.dettaglio || ('HTTP ' + res.status));
+        err.status = res.status;
+        throw err;
+      }
+      return dati;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Un codice di stanza si scrive `ABC-123`. Va distinto da un codice di gioco,
+  // che è base64url e contiene trattini anche lui: perciò si accetta solo da
+  // solo, oppure subito dopo il `#j=` di un link.
+  function extractRoom(text) {
+    const s = String(text || '').trim();
+    const daLink = /[#&]j=([A-Za-z0-9]{3}-[A-Za-z0-9]{3})(?![A-Za-z0-9_-])/.exec(s);
+    if (daLink) return daLink[1].toUpperCase();
+    const nudo = /^([A-Za-z0-9]{3}-[A-Za-z0-9]{3})$/.exec(s);
+    return nudo ? nudo[1].toUpperCase() : null;
+  }
+
+  const Scambio = {
+    configurato: () => !!turnEndpoint(),
+    extractRoom,
+    // Chi invita: deposita l'invito, riceve il codice della stanza
+    async apri(invito) {
+      return (await chiediScambio('/nuova', { method: 'POST', body: { invito } })).stanza;
+    },
+    // Chi invita: sostituisce l'invito finché nessuno l'ha ritirato, così chi
+    // arriva cinque minuti dopo trova indirizzi appena raccolti e non vecchi.
+    rinfresca: (stanza, invito) => chiediScambio('/' + stanza, { method: 'PUT', body: { invito } }),
+    // Chi risponde: ritira l'invito (e da qui la stanza è "ritirata")
+    async ritira(stanza) {
+      return (await chiediScambio('/' + stanza)).invito;
+    },
+    deposita: (stanza, risposta) => chiediScambio('/' + stanza + '/r', { method: 'POST', body: { risposta } }),
+    raccogli: (stanza) => chiediScambio('/' + stanza + '/r'),
+  };
+
   // Quali candidati contiene un SDP. Serve a sapere *prima* di condividere un
   // codice se quel codice ha qualche speranza di funzionare fuori dalla LAN.
   function candidateSummary(sdp) {
@@ -757,6 +826,7 @@
     LocalTransport,
     RTCTransport,
     iceConfig,
+    Scambio,
     waitForIce,
     turnEndpoint,
     normalizeIceServers,

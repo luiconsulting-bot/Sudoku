@@ -46,6 +46,11 @@
     handshakeId: null,    // sorveglia che il collegamento si apra davvero
     ageId: null,          // aggiorna l'età dell'invito mostrata all'host
     inviteAt: 0,
+    stanza: null,         // codice della cassetta postale, se lo scambio è attivo
+    ritirato: false,      // l'avversario ha già ritirato l'invito
+    pollId: null,         // sondaggio della risposta
+    rinfrescoId: null,    // sostituzione periodica dell'invito non ancora ritirato
+    rinfreschi: 0,
     answering: false,     // risposta in preparazione (evita doppioni da input+click)
     answeredFor: null,    // payload dell'invito per cui la risposta è già pronta
     connecting: false,
@@ -91,6 +96,11 @@
     hostBack: $('duo-host-back'),
     long: $('duo-long'),
     longG: $('duo-long-g'),
+    room: $('duo-room'),
+    roomCode: $('duo-room-code'),
+    roomLink: $('duo-room-link'),
+    roomShare: $('duo-room-share'),
+    roomCopy: $('duo-room-copy'),
     reportBox: $('duo-report-box'),
     report: $('duo-report'),
     reportCopy: $('duo-report-copy'),
@@ -158,6 +168,10 @@
     setStatus(el.hostStatus, '');
     setStatus(el.guestStatus, '');
     if (el.reportBox) { el.reportBox.hidden = true; el.reportBox.open = false; }
+    fermaScambio();
+    mostraPassiManuali(true);
+    const campoRisposta = campoDi(el.answerOut);
+    if (campoRisposta) campoRisposta.hidden = false;
     refreshCurrentCode();
     showStep('menu');
     el.overlay.hidden = false;
@@ -220,6 +234,198 @@
     if (!duo.transport || !duo.transport.describe) return;
     const code = duo.transport.describe(el.longG.checked);
     if (code) el.answerOut.value = code;
+  }
+
+  /* ---------- Lo scambio automatico ---------- */
+
+  // Quanto spesso si chiede se la risposta è arrivata. Un secondo e mezzo è
+  // impercettibile per chi aspetta e sono quattro richieste in tutto.
+  const RACCOLTA_MS = 1500;
+  // Ogni quanto si sostituisce l'invito che nessuno ha ancora ritirato, e per
+  // quante volte. Oltre i quattro minuti chi ha ricevuto il link non arriverà
+  // più, e continuare significherebbe tenere aperte allocazioni sul ponte.
+  const RINFRESCO_MS = 30000;
+  const RINFRESCHI_MAX = 8;
+
+  const campoDi = (node) => (node && node.closest ? node.closest('.duo__field') : null);
+
+  // I due passi manuali: si nascondono quando la cassetta postale funziona, e
+  // ricompaiono tali e quali se non funziona. Non è una modalità a parte —
+  // è la stessa schermata con un passaggio in meno.
+  function mostraPassiManuali(on) {
+    const campoInvito = campoDi(el.invite);
+    const campoRisposta = campoDi(el.answerIn);
+    if (campoInvito) campoInvito.hidden = !on;
+    if (campoRisposta) campoRisposta.hidden = !on;
+    if (el.inviteAge) el.inviteAge.hidden = !on;
+  }
+
+  function fermaScambio() {
+    clearTimeout(duo.pollId);
+    clearTimeout(duo.rinfrescoId);
+    duo.pollId = null;
+    duo.rinfrescoId = null;
+    duo.stanza = null;
+    duo.ritirato = false;
+    duo.rinfreschi = 0;
+    if (el.room) el.room.hidden = true;
+  }
+
+  // Chi invita: deposita l'invito e mostra il codice breve. Se qualcosa non va
+  // — Worker spento, D1 non collegato, rete che non esce — si torna in silenzio
+  // allo scambio a mano: il gioco deve restare giocabile senza.
+  async function apriStanza(zitto) {
+    if (!Net.Scambio.configurato()) { mostraPassiManuali(true); return false; }
+    try {
+      duo.stanza = await Net.Scambio.apri(duo.transport.describe(el.long.checked));
+    } catch (err) {
+      duo.stanza = null;
+      mostraPassiManuali(true);
+      S.showToast('Scambio automatico non disponibile: si fa a mano');
+      return false;
+    }
+    duo.ritirato = false;
+    duo.rinfreschi = 0;
+    mostraPassiManuali(false);
+    renderStanza(zitto);
+    attendiRisposta();
+    programmaRinfresco();
+    return true;
+  }
+
+  function renderStanza(zitto) {
+    if (!el.room || !duo.stanza) return;
+    el.room.hidden = false;
+    el.roomCode.textContent = duo.stanza;
+    el.roomLink.value = inviteLink(duo.stanza);
+    if (!zitto) {
+      setStatus(el.hostStatus, 'Mandagli il codice: appena lo apre partite. '
+        + 'Non deve rimandarti niente.');
+    }
+  }
+
+  // Il sondaggio. Non è un'attesa passiva: dice anche quando l'avversario ha
+  // ritirato l'invito, che è il momento in cui smette di avere senso
+  // rinfrescarlo.
+  function attendiRisposta() {
+    clearTimeout(duo.pollId);
+    duo.pollId = setTimeout(async () => {
+      if (!duo.stanza || duo.phase !== 'connecting') return;
+      try {
+        const esito = await Net.Scambio.raccogli(duo.stanza);
+        if (esito.risposta) {
+          clearTimeout(duo.rinfrescoId);
+          duo.stanza = null;
+          await usaRisposta(esito.risposta);
+          return;
+        }
+        if (esito.ritirato && !duo.ritirato) {
+          duo.ritirato = true;
+          clearTimeout(duo.rinfrescoId);
+          setStatus(el.hostStatus, 'Invito aperto dall’avversario, aspetto la risposta…');
+        }
+      } catch (err) {
+        if (err.status === 404) {
+          // La stanza è scaduta: l'invito che ha in mano non vale più.
+          fermaScambio();
+          mostraPassiManuali(true);
+          setStatus(el.hostStatus, 'Il codice è scaduto: premi «Genera un nuovo '
+            + 'invito» e ridàgli quello nuovo.', 'bad');
+          return;
+        }
+        // Un intoppo di rete non è un fallimento: si riprova al giro dopo.
+      }
+      attendiRisposta();
+    }, RACCOLTA_MS);
+  }
+
+  async function usaRisposta(codice) {
+    setStatus(el.hostStatus, 'Risposta arrivata, collego…');
+    try {
+      await duo.transport.acceptAnswer(codice);
+      watchHandshake(el.hostStatus);
+    } catch (err) {
+      setStatus(el.hostStatus, 'La risposta è arrivata ma non è utilizzabile: '
+        + err.message, 'bad');
+      renderReport(true);
+    }
+  }
+
+  // Il pezzo che va oltre la velocità: finché nessuno ha ritirato l'invito, se
+  // ne prepara uno nuovo. Un invito raccolto cinque minuti dopo porta indirizzi
+  // di cinque minuti prima, e il varco che il router aveva aperto si è già
+  // richiuso — è il guasto che questo scambio esiste per togliere di mezzo.
+  function programmaRinfresco() {
+    clearTimeout(duo.rinfrescoId);
+    if (duo.ritirato || duo.rinfreschi >= RINFRESCHI_MAX) return;
+    duo.rinfrescoId = setTimeout(rinfrescaInvito, RINFRESCO_MS);
+  }
+
+  async function rinfrescaInvito() {
+    if (!duo.stanza || duo.ritirato || duo.phase !== 'connecting') return;
+    duo.rinfreschi += 1;
+    const vecchio = duo.transport;
+    let nuovo = null;
+    try {
+      const ice = duo.bridge || await Net.iceConfig();
+      nuovo = Net.RTCTransport(ice.servers);
+      await nuovo.createInvite(null, ice.bridge === 'on');
+      const esito = await Net.Scambio.rinfresca(duo.stanza, nuovo.describe(el.long.checked));
+
+      // Fra il sondaggio e questo momento l'avversario può aver ritirato
+      // l'invito vecchio: in quel caso è quello che lui ha in mano, e il nuovo
+      // va buttato — non il contrario.
+      if (esito.ritirato) {
+        nuovo.close();
+        duo.ritirato = true;
+        return;
+      }
+      attach(nuovo);
+      renderInvite();
+      renderNet(el.hostNet);
+      if (vecchio) vecchio.close();
+    } catch (err) {
+      if (nuovo) nuovo.close();
+      // Un rinfresco mancato non rompe niente: l'invito di prima resta valido.
+    }
+    programmaRinfresco();
+  }
+
+  // Chi risponde, arrivando da un codice di stanza: ritira l'invito, prepara la
+  // risposta e la deposita. Nessun codice da rimandare a mano.
+  async function entraDaStanza(stanza) {
+    duo.role = 'guest';
+    duo.name = slots ? slots.getValue() : S.loadLastName();
+    S.saveLastName(duo.name);
+    duo.phase = 'connecting';
+    showStep('guest');
+    el.inviteIn.value = '';
+    el.answerOut.value = '';
+    setStatus(el.guestStatus, 'Ritiro l’invito…');
+
+    let invito;
+    try {
+      invito = await Net.Scambio.ritira(stanza);
+    } catch (err) {
+      setStatus(el.guestStatus, err.status === 404
+        ? 'Questo codice non vale più: fattene mandare uno nuovo.'
+        : 'Non riesco a ritirare l’invito: ' + err.message, 'bad');
+      return;
+    }
+
+    el.inviteIn.value = invito;
+    await generateAnswer();
+    if (!el.answerOut.value) return; // generateAnswer ha già detto cosa non va
+
+    try {
+      await Net.Scambio.deposita(stanza, el.answerOut.value);
+      const campo = campoDi(el.answerOut);
+      if (campo) campo.hidden = true;
+      setStatus(el.guestStatus, 'Risposta mandata. Aspetta il via…', 'ok');
+    } catch (err) {
+      setStatus(el.guestStatus, 'Non riesco a mandare la risposta: rimandagli '
+        + 'questo codice a mano.', 'bad');
+    }
   }
 
   // Senza un indirizzo raggiungibile da fuori il codice vale solo dentro la
@@ -452,6 +658,8 @@
     }
 
     showStep('host');
+    fermaScambio();
+    mostraPassiManuali(true);
     el.answerIn.parentElement.hidden = false;
     el.invite.value = '';
     el.inviteAge.textContent = '';
@@ -469,9 +677,15 @@
       startInviteAge();
       renderNet(el.hostNet);
       renderReport(false);
+      // Il messaggio si mette *prima* di andare alla cassetta postale: l'invito
+      // è già pronto, e lasciare «Cerco un percorso di rete…» mentre si aspetta
+      // il Worker significa mostrare per otto secondi uno stato non più vero.
       const warn = localOnlyWarning();
       setStatus(el.hostStatus, warn || 'Manda il link all’avversario, poi incolla qui il '
         + 'codice di risposta che ti rimanda.', warn ? 'bad' : null);
+      // Se lo scambio automatico riesce, il messaggio lo riscrive lui — a meno
+      // che ci sia un avviso sulla rete, che è più importante di un'istruzione.
+      await apriStanza(!!warn);
     } catch (err) {
       setStatus(el.hostStatus, 'Non riesco a preparare l’invito: ' + err.message, 'bad');
     }
@@ -479,6 +693,7 @@
 
   async function regenerateInvite() {
     stopInviteAge();
+    fermaScambio();
     clearTimeout(duo.handshakeId);
     if (duo.transport) { duo.transport.close(); duo.transport = null; }
     el.answerIn.value = '';
@@ -547,6 +762,11 @@
   }
 
   async function joinMatch(prefilled) {
+    // Un codice di stanza porta allo scambio automatico: niente da rimandare.
+    const stanza = !duo.useLocal && Net.Scambio.configurato()
+      ? Net.Scambio.extractRoom(prefilled) : null;
+    if (stanza) return entraDaStanza(stanza);
+
     duo.role = 'guest';
     duo.name = slots ? slots.getValue() : S.loadLastName();
     S.saveLastName(duo.name);
@@ -566,6 +786,8 @@
     el.answerOut.parentElement.hidden = false;
     if (prefilled) el.inviteIn.value = prefilled;
     el.answerOut.value = '';
+    const campoRisposta = campoDi(el.answerOut);
+    if (campoRisposta) campoRisposta.hidden = false;
 
     // Arrivando da un link l'invito c'è già: generare la risposta da soli evita
     // un passaggio manuale che non aggiunge nulla.
@@ -579,6 +801,9 @@
 
   async function generateAnswer() {
     const code = el.inviteIn.value;
+    const stanza = !duo.useLocal && Net.Scambio.configurato()
+      ? Net.Scambio.extractRoom(code) : null;
+    if (stanza) return entraDaStanza(stanza);
     const found = Net.extractCode(code);
     if (!found) {
       setStatus(el.guestStatus, 'Incolla il link o il codice dell’invito.', 'bad');
@@ -1031,6 +1256,7 @@
     clearTimeout(duo.settleId);
     clearTimeout(duo.handshakeId);
     stopInviteAge();
+    fermaScambio();
     if (duo.transport) duo.transport.close();
     duo.transport = null;
     duo.phase = 'idle';
@@ -1102,6 +1328,13 @@
     el.localNote.hidden = !duo.useLocal;
   });
 
+  if (el.roomCopy) {
+    el.roomCopy.addEventListener('click', () => copyText(el.roomLink.value, el.roomLink));
+  }
+  if (el.roomShare) {
+    el.roomShare.addEventListener('click', () => shareText(
+      `Sfida a Sudoku — codice ${duo.stanza}\n${el.roomLink.value}`, el.roomLink));
+  }
   el.inviteCopy.addEventListener('click', () => copyText(el.invite.value, el.invite));
   el.inviteShare.addEventListener('click', () => shareText(el.invite.value, el.invite));
   el.inviteNew.addEventListener('click', regenerateInvite);

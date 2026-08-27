@@ -24,7 +24,7 @@ config.js    ← unica configurazione: indirizzo del ponte TURN
 net.js       trasporto: WebRTC, ponte, codifica dei codici. Nessun DOM
 script.js    motore di gioco: generatore, stato, interazione, single player
 duo.js       duello in due: protocollo, regole, interfaccia
-turn-worker/ il Worker Cloudflare che conia le credenziali TURN
+turn-worker/ il Worker Cloudflare: credenziali TURN e scambio dei codici
 test/        la suite, si esegue con ./test/run.sh
 ```
 
@@ -49,9 +49,18 @@ Stesso puzzle, due griglie separate, vince chi finisce primo. Il puzzle è
 identificato da **difficoltà + seed** (PRNG mulberry32 deterministico): l'host
 manda il seed, non la griglia.
 
-Il collegamento è **WebRTC senza server di signaling**: l'invito e la risposta se
-li scambiano le due persone a mano (link e codice). L'**host è l'autorità**
-sull'esito, così i due schermi non possono dire cose diverse.
+Il collegamento è **WebRTC**. Invito e risposta viaggiano in due modi:
+
+- **automatico** (predefinito quando il Worker è configurato): chi invita
+  deposita l'invito nella cassetta postale del Worker e riceve un codice breve
+  tipo `KLZ-56G`; chi risponde lo ritira e deposita la risposta; chi invita la
+  raccoglie da sé. Due secondi, e niente da copiare;
+- **a mano**, la via di scampo di sempre: link e codice incollati dalle due
+  persone. Vale quando il Worker non c'è o non risponde, e il gioco non deve
+  mai smettere di funzionare senza.
+
+L'**host è l'autorità** sull'esito, così i due schermi non possono dire cose
+diverse.
 
 Il protocollo è in `duo.js` (`hello/welcome/ready/start/progress/finished/
 result/rematch/ping`), versionato con `proto: 1`.
@@ -85,6 +94,31 @@ Quattro punti delicati, tutti già costati un ciclo di prove:
    il ponte attivo da entrambe le parti*. Perciò il taglio è per tipo **e**
    famiglia, e il referto le dice sempre entrambe.
 
+### Lo scambio automatico dei codici
+
+Vive sotto `/s` nello stesso Worker del ponte (`turn-worker/worker.js`), su un
+database **D1**. Non è stato scelto un Durable Object per una ragione pratica:
+le classi Durable Object richiedono `wrangler`, mentre D1 si configura tutto dal
+pannello — ed è il percorso che questo progetto documenta.
+
+Perché esiste, al di là della comodità: lo scambio a mano richiede dai trenta ai
+novanta secondi, e in quel tempo il varco che il router apre verso l'esterno può
+richiudersi. Peggio, la chat dove viaggiano i codici li **accumula**, e
+incollare quello del tentativo precedente produce un collegamento che viene
+accettato e non si apre mai — il guasto più difficile da riconoscere che questo
+progetto abbia incontrato.
+
+C'è un pezzo che va oltre la velocità: **finché nessuno ha ritirato l'invito,
+chi invita ne prepara uno nuovo ogni trenta secondi** e lo sostituisce. Così chi
+apre il link cinque minuti dopo trova indirizzi appena raccolti. Attenzione alla
+corsa: fra il sondaggio e la sostituzione l'avversario può aver ritirato quello
+vecchio, ed è quello che conta — perciò il trasporto nuovo si tiene **solo** se
+il Worker conferma che nessuno ha ancora ritirato (`rinfrescaInvito` in
+`duo.js`).
+
+Le stanze durano quindici minuti e spariscono appena la risposta è stata
+raccolta. Il Worker non sa cosa contengono i codici.
+
 ### Il referto tecnico
 
 Da qui l'attraversamento NAT vero non si prova, quindi un fallimento sul campo
@@ -115,14 +149,17 @@ funzione. `test-messaggi` fallisce se quelle frasi ricompaiono.
 ./test/run.sh test-duel    # una sola
 ```
 
-Avvia da sé il server statico e un endpoint TURN finto. Serve Playwright con
+Avvia da sé il server statico e un endpoint TURN finto — dentro il quale, sotto
+`/s`, gira il **codice vero** del Worker su uno SQLite in memoria: le prove
+esercitano il servizio che va su Cloudflare, non una sua imitazione. Serve Playwright con
 Chromium; se non è risolvibile lo script lo dice e spiega come installarlo.
 
 Cosa coprono, in ordine di rapidità:
 
 | File | Copre |
 |---|---|
-| `test-logic` | generatore deterministico, codice partita, codec SDP, codici come li mandano i telefoni, famiglie di indirizzi |
+| `test-logic` | generatore deterministico, codice partita, codec SDP, codici come li mandano i telefoni, famiglie di indirizzi, più codici nello stesso incollaggio |
+| `test-scambio` | la cassetta postale del Worker, provata fuori dal browser su SQLite vero |
 | `test-relay-wait` | l'attesa dei candidati aspetta il ponte, e ne aspetta la raffica |
 | `test-trim` | molti candidati non gonfiano il codice, ma nessuna famiglia sparisce |
 | `test-solo` | non-regressione del single player |
@@ -130,6 +167,7 @@ Cosa coprono, in ordine di rapidità:
 | `test-duel-paths` | errori esauriti, connessione persa, vittoria a tavolino, protocollo incompatibile |
 | `test-connect` | schermata di collegamento, codice lungo, età dell'invito |
 | `test-flow` | il giro completo senza premere pulsanti |
+| `test-scambio-web` | duello capo a capo **senza copiare niente**, con il codice vero del Worker |
 | `test-diag` | versione coerente, referto di rete e referto tecnico, sorvegliante del collegamento |
 | `test-turn` / `test-turn-down` | il ponte, e il ponte guasto |
 | `test-messaggi` | i testi corrispondono allo stato reale |
