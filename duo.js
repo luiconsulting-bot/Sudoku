@@ -302,13 +302,10 @@
     return { miei: `solo ${nome(a)}`, suoi: `solo ${nome(b)}` };
   }
 
-  // Compatto o lungo cambiano quanti candidati partono: il referto deve
-  // guardare la scrittura che l'avversario riceverà davvero.
-  const longChecked = () => !!(duo.role === 'guest' ? el.longG && el.longG.checked
-    : el.long && el.long.checked);
-
+  // Il riassunto è quello del codice generato per ultimo: lo aggiorna
+  // `describe()`, cioè il momento in cui il codice viene scritto.
   const netSummary = () =>
-    (duo.transport && duo.transport.summary ? duo.transport.summary(longChecked()) : null);
+    (duo.transport && duo.transport.summary ? duo.transport.summary() : null);
 
   function statoPonte() {
     const b = duo.bridge;
@@ -350,7 +347,6 @@
     const t = duo.transport;
     if (!t || !t.report) { el.reportBox.hidden = true; return; }
     el.reportBox.hidden = false;
-    netSummary(); // aggiorna la riga «spediti» del referto
     let righe;
     try {
       righe = await t.report();
@@ -492,6 +488,21 @@
     S.showToast('Invito nuovo: rimanda il link, quello di prima non vale più');
   }
 
+  // Chi si scambia i codici lo fa in una chat o in una bozza di posta, che li
+  // accumula: capita di incollare tutto il blocco. Si dà retta all'ultimo, ma
+  // va detto — perché la risposta di un tentativo precedente viene accettata
+  // senza errori e poi non si collega mai.
+  function avvisaPiuCodici(testo, node) {
+    const n = Net.countCodes(testo);
+    if (n > 1) {
+      S.showToast(`Nell’incollato ci sono ${n} codici: uso l’ultimo`);
+      setStatus(node, `Attenzione: ho trovato ${n} codici in quello che hai `
+        + 'incollato e sto usando l’ultimo. Se non è quello giusto, incolla solo '
+        + 'il codice più recente.');
+    }
+    return n;
+  }
+
   async function acceptAnswer() {
     if (duo.connecting) return;
     const code = el.answerIn.value;
@@ -499,6 +510,7 @@
       setStatus(el.hostStatus, 'Incolla il codice di risposta dell’avversario.', 'bad');
       return;
     }
+    avvisaPiuCodici(code, el.hostStatus);
     if (!duo.transport || !duo.transport.acceptAnswer) {
       setStatus(el.hostStatus, 'L’invito non è più valido: generane uno nuovo.', 'bad');
       return;
@@ -573,6 +585,7 @@
       return;
     }
     if (duo.answering) return;
+    avvisaPiuCodici(code, el.guestStatus);
 
     // Una risposta vale per un invito solo. Rigenerarla per lo stesso invito
     // renderebbe inutile quella già mandata all'avversario.

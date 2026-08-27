@@ -168,45 +168,99 @@
   // riga aggiunti dalla chat, ed è normale che la tastiera del telefono
   // "corregga" il prefisso in minuscolo. Il payload invece resta come è: è
   // base64url, dove maiuscole e minuscole contano.
-  const CODE_RE = /S1(L?):([A-Za-z0-9_-]{16,})/i;
+  const CODE_RE = /S1(L?):([A-Za-z0-9_-]{16,})/gi;
   const asCandidate = (m) => ({ long: m[1].toUpperCase() === 'L', payload: m[2] });
 
+  // Un incollaggio contiene spesso **più di un codice**. Chi si scambia i
+  // codici usa una chat o una bozza di posta, e quella li accumula: l'invito,
+  // la risposta, poi l'invito del tentativo dopo. Prendere il primo che si
+  // incontra significa prendere il **più vecchio** — e la risposta di un
+  // tentativo passato viene accettata senza errori e poi non si collega mai,
+  // che è il guasto più difficile da riconoscere di tutti.
+  // Perciò si raccolgono tutti, nell'ordine, e si sceglie dal fondo.
   function codeCandidates(text) {
     const s = String(text || '');
     const out = [];
+    const visti = new Set();
+    const aggiungi = (m) => {
+      if (visti.has(m[2])) return;
+      visti.add(m[2]);
+      out.push(asCandidate(m));
+    };
 
-    // Prima il codice come token a sé: il payload finisce dove finiscono i
+    // Prima i codici come token a sé: il payload finisce dove finiscono i
     // caratteri ammessi, quindi un codice incollato *dentro una frase* non si
     // porta dietro le parole che lo seguono.
-    const direct = CODE_RE.exec(s);
-    if (direct) out.push(asCandidate(direct));
+    for (const m of s.matchAll(CODE_RE)) aggiungi(m);
 
     // Poi il ripiego per il codice spezzato su più righe da chi l'ha inoltrato:
     // qui gli spazi vanno tolti, ma solo come seconda ipotesi perché su una
     // frase intera incollerebbe il codice al testo vicino.
-    const flat = CODE_RE.exec(s.replace(/\s+/g, ''));
-    if (flat && (!direct || flat[2] !== direct[2])) out.push(asCandidate(flat));
+    for (const m of s.replace(/\s+/g, '').matchAll(CODE_RE)) aggiungi(m);
 
     return out;
   }
 
-  const extractCode = (text) => codeCandidates(text)[0] || null;
+  function decodeOne(c) {
+    if (!c.long) return expandSdp(JSON.parse(b64urlDecode(c.payload)));
+    const sdp = b64urlDecode(c.payload);
+    if (!/^v=0/.test(sdp)) throw new Error('non è un SDP');
+    return sdp;
+  }
 
-  function decodeDesc(code) {
-    const candidates = codeCandidates(code);
-    if (candidates.length === 0) {
+  // Quelli che si decodificano davvero. Serve perché la seconda passata (quella
+  // senza spazi, per i codici mandati a capo) incolla fra loro i codici vicini
+  // e produce frammenti che *sembrano* codici: contarli farebbe dire «cinque
+  // codici» dove ce ne sono tre.
+  function usableCodes(text) {
+    const out = [];
+    for (const c of codeCandidates(text)) {
+      try {
+        out.push({ ...c, sdp: decodeOne(c) });
+      } catch { /* frammento, non un codice */ }
+    }
+    return out;
+  }
+
+  // Quanti codici ci sono davvero in quello che è stato incollato: se sono più
+  // di uno vale la pena dirlo, invece di scegliere in silenzio.
+  const countCodes = (text) => usableCodes(text).length;
+
+  const ufragOf = (sdp) => (/^a=ice-ufrag:(.+)$/m.exec(String(sdp)) || [])[1];
+
+  // L'ultimo codice utilizzabile, che è il più recente. `notUfrag` scarta il
+  // proprio: nella bozza dove ci si scambia i codici il proprio invito è lì
+  // accanto, e applicarlo al posto della risposta altrui è un errore facile da
+  // fare e impossibile da diagnosticare da solo.
+  function decodeDesc(code, opts = {}) {
+    if (codeCandidates(code).length === 0) {
       throw new Error(String(code || '').trim()
         ? 'in quello che hai incollato non trovo un codice del gioco'
         : 'codice vuoto');
     }
-    for (const c of candidates) {
-      try {
-        return c.long ? b64urlDecode(c.payload)
-          : expandSdp(JSON.parse(b64urlDecode(c.payload)));
-      } catch { /* si prova l'ipotesi successiva */ }
+    const buoni = usableCodes(code);
+    const mio = opts.notUfrag ? String(opts.notUfrag).trim() : null;
+    let scartatoIlMio = false;
+    for (let i = buoni.length - 1; i >= 0; i--) {
+      if (mio && (ufragOf(buoni[i].sdp) || '').trim() === mio) { scartatoIlMio = true; continue; }
+      return buoni[i].sdp;
+    }
+    if (scartatoIlMio) {
+      throw new Error('questo è il tuo codice, non quello dell’avversario: '
+        + 'copia solo il codice che ti ha rimandato lui');
     }
     throw new Error('il codice sembra incompleto o alterato: rifallo copiare per intero');
   }
+
+  // L'ultimo codice presente, che è quello a cui si darà retta. Se nessuno si
+  // decodifica si restituisce comunque l'ultimo trovato: chi lo ha incollato
+  // merita l'errore «codice incompleto», non «qui non c'è nessun codice».
+  const extractCode = (text) => {
+    const buoni = usableCodes(text);
+    if (buoni.length) return buoni[buoni.length - 1];
+    const grezzi = codeCandidates(text);
+    return grezzi.length ? grezzi[grezzi.length - 1] : null;
+  };
 
   /* ---------- Trasporto locale (due schede dello stesso browser) ---------- */
 
@@ -450,7 +504,9 @@
       states: [],          // [ms, etichetta]
       gathered: null,      // candidati raccolti da noi
       sent: null,          // candidati davvero finiti nel codice (dopo il taglio)
-      received: null,      // candidati arrivati dall'avversario
+      received: null,      // candidati arrivati dall'avversario, se accettati
+      refused: null,       // un codice rifiutato: dice che si è incollato altro
+      pairs: null,         // le coppie fotografate quando il collegamento è fallito
     };
 
     const segna = (etichetta) => {
@@ -472,6 +528,21 @@
     pc.addEventListener('icegatheringstatechange', () => segna('raccolta:' + pc.iceGatheringState));
     pc.addEventListener('iceconnectionstatechange', () => segna('ice:' + pc.iceConnectionState));
     pc.addEventListener('connectionstatechange', () => segna('conn:' + pc.connectionState));
+
+    // Le coppie vanno fotografate *quando* il collegamento fallisce. Chiederle
+    // dopo dà un referto vuoto — «coppie: nessuna» — che sembra la diagnosi
+    // opposta: nessun tentativo invece di tutti i tentativi falliti.
+    const istantanea = async () => {
+      if (diag.pairs) return;
+      diag.pairs = await pairReport(pc);
+    };
+    pc.addEventListener('iceconnectionstatechange', () => {
+      if (pc.iceConnectionState === 'failed') istantanea();
+    });
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc.connectionState === 'failed') istantanea();
+    });
+
     segna('avvio');
     return diag;
   }
@@ -585,17 +656,28 @@
       // comunque «Collega» ne scatena un altro.
       async acceptAnswer(code) {
         if (pc.signalingState !== 'have-local-offer') return false;
-        const sdp = decodeDesc(code);
+        const sdp = decodeDesc(code, { notUfrag: ufragOf(pc.localDescription.sdp) });
+        try {
+          await pc.setRemoteDescription({ type: 'answer', sdp });
+        } catch (err) {
+          // Registrato come rifiuto, non come «ricevuto»: un codice che il
+          // browser non ha accettato non è mai arrivato all'ICE, e contarlo
+          // fra i ricevuti faceva sembrare andato a buon fine un passaggio
+          // che non c'era stato.
+          diag.refused = candidateSummary(sdp);
+          throw err;
+        }
         diag.received = candidateSummary(sdp);
-        await pc.setRemoteDescription({ type: 'answer', sdp });
         return true;
       },
 
       // Guest: applica l'invito e restituisce l'SDP della risposta
       async joinWithInvite(code, onProgress, needRelay) {
-        const sdp = decodeDesc(code);
-        diag.received = candidateSummary(sdp);
+        const sdp = decodeDesc(code, {
+          notUfrag: pc.localDescription ? ufragOf(pc.localDescription.sdp) : null,
+        });
         await pc.setRemoteDescription({ type: 'offer', sdp });
+        diag.received = candidateSummary(sdp);
         await pc.setLocalDescription(await pc.createAnswer());
         await waitForIce(pc, { onProgress, needRelay });
         diag.gathered = candidateSummary(pc.localDescription.sdp);
@@ -606,7 +688,14 @@
       // all'altra non richiede di rinegoziare nulla, basta ricodificare.
       describe(useLong) {
         if (!pc.localDescription) return '';
-        return encodeDesc(pc.localDescription.sdp, useLong);
+        const code = encodeDesc(pc.localDescription.sdp, useLong);
+        // Qui, e solo qui, si sa che cosa è partito davvero. I candidati
+        // continuano ad arrivare anche dopo — un telefono in 5G finisce di
+        // raccogliere dopo un minuto e mezzo — e ricalcolare il riassunto al
+        // momento del referto mostrava indirizzi che nel codice non c'erano
+        // mai stati.
+        try { diag.sent = candidateSummary(decodeDesc(code)); } catch { /* niente da dire */ }
+        return code;
       },
 
       // Che tipo di indirizzi contiene il nostro codice. Attenzione: quelli
@@ -614,12 +703,7 @@
       // taglio può ridurre dieci candidati dal ponte a quattro — e mostrare i
       // raccolti significava rassicurare («10 dal ponte») su indirizzi che
       // all'avversario non arrivavano.
-      summary(useLong) {
-        if (!pc.localDescription) return null;
-        const s = candidateSummary(decodeDesc(encodeDesc(pc.localDescription.sdp, useLong)));
-        diag.sent = s;
-        return s;
-      },
+      summary() { return diag.sent; },
 
       // Che indirizzi ci ha mandato l'avversario. Il confronto con i nostri è
       // l'unica diagnosi possibile del caso «ponte attivo da entrambe le parti
@@ -637,6 +721,8 @@
           ? candidateSummary(pc.localDescription.sdp) : null));
         s('spediti', diag.sent);
         s('ricevuti', diag.received);
+        if (!diag.received) righe.push('ricevuti: niente — nessun codice accettato');
+        s('rifiutato', diag.refused);
         if (diag.errors.size) {
           for (const [chiave, n] of diag.errors) {
             righe.push(`errore ICE ×${n}: ${chiave}`);
@@ -644,7 +730,9 @@
         } else {
           righe.push('errori ICE: nessuno');
         }
-        righe.push(...await pairReport(pc));
+        // Se il collegamento è fallito vale l'istantanea di allora: dopo, il
+        // browser ha già smontato tutto e il referto direbbe «nessuna coppia».
+        righe.push(...(diag.pairs || await pairReport(pc)));
         righe.push('stati: ' + diag.states.map(([ms, e]) => `${(ms / 1000).toFixed(1)}s ${e}`).join(' → '));
         return righe;
       },
@@ -677,6 +765,7 @@
     summaryDetail,
     routableFamilies,
     extractCode,
+    countCodes,
     compactSdp,
     expandSdp,
     candidateSummary,

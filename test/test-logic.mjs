@@ -167,6 +167,44 @@ console.log('✓ senza candidati utilizzabili ripiega sul codice lungo');
   console.log('✓ famiglie di indirizzi: due codici incompatibili sono riconoscibili');
 }
 
+/* --- 8ter. Un incollaggio con più codici: vince il più recente --- */
+// Il caso vero, ed è il più insidioso di tutti: i codici si scambiano in una
+// chat o in una bozza di posta, che li accumula. Prendendo il primo che si
+// incontra si applica il codice del tentativo *precedente*: viene accettato
+// senza errori e poi non si collega mai, senza che nulla lo dica.
+{
+  const conUfrag = (u, setup) => [
+    'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+    'a=candidate:1 1 udp 2122262783 1.2.3.4 5000 typ host',
+    `a=ice-ufrag:${u}`, 'a=ice-pwd:by/PmMA1nUOUXjHXaMHDBGnb',
+    'a=fingerprint:sha-256 ' + Array(32).fill('AB').join(':'),
+    `a=setup:${setup}`,
+  ].join('\r\n') + '\r\n';
+
+  const mioInvito = Net.encodeDesc(conUfrag('MIOO', 'actpass'), false);
+  const rispostaVecchia = Net.encodeDesc(conUfrag('VECC', 'active'), false);
+  const rispostaNuova = Net.encodeDesc(conUfrag('NUOV', 'active'), false);
+
+  const bozza = `Sudoku, ecco il link:\nhttps://esempio.it/Sudoku/#j=${mioInvito}\n\n`
+    + `risposta:\n${rispostaVecchia}\n\nnon andava, riprovo:\n${rispostaNuova}\n`;
+
+  assert.equal(Net.countCodes(bozza), 3, 'li conta tutti e tre');
+  const scelto = Net.decodeDesc(bozza);
+  assert.ok(scelto.includes('a=ice-ufrag:NUOV'),
+    'dà retta all’ultimo codice, non al primo che incontra');
+  console.log('✓ incollaggio con tre codici: si applica il più recente, non il più vecchio');
+
+  // E il proprio codice non deve mai essere scambiato per quello dell'avversario
+  const soloIlMio = `ecco il mio invito: https://esempio.it/Sudoku/#j=${mioInvito}`;
+  assert.throws(() => Net.decodeDesc(soloIlMio, { notUfrag: 'MIOO' }),
+    /è il tuo codice/, 'riconosce il proprio codice incollato al posto di quello altrui');
+  // ma se nell'incollato c'è anche quello giusto, lo trova
+  assert.ok(Net.decodeDesc(`${mioInvito}\n${rispostaNuova}`, { notUfrag: 'MIOO' })
+    .includes('a=ice-ufrag:NUOV'), 'scarta il proprio e tiene quello dell’avversario');
+  console.log('✓ il proprio codice viene riconosciuto e scartato, con un errore che lo dice');
+}
+
 /* --- 9. Codici come arrivano davvero dai telefoni --- */
 // Il caso osservato: la tastiera dell'iPhone ha reso minuscolo il prefisso,
 // e il codice veniva rifiutato con "non sembra un invito di questo gioco".
