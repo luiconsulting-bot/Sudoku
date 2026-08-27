@@ -473,6 +473,35 @@ body {
 .duo-hud__stats { display: flex; gap: 18px; flex: 1; justify-content: space-around; }
 .duo-hud__stats .stat__value { font-size: 1.1rem; }
 
+/* I tuoi dati sotto quelli dell'avversario. Le due righe devono incolonnarsi:
+   stesse quattro colonne, stessa larghezza, così il confronto è un'occhiata e
+   non una lettura. */
+.duo-mine {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px 16px 10px;
+  margin-bottom: 14px;
+}
+.duo-mine[hidden] { display: none; }
+.duo-mine__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.duo-mine__body { display: flex; align-items: center; gap: 16px; margin-top: 6px; }
+/* Lo spazio che dall'altra parte occupa la griglia ombra: senza, le due righe
+   sarebbero sfalsate proprio di quella. */
+.duo-mine__body::before { content: ''; width: 90px; flex: none; }
+.duo-mine__body .toolbar__stats { flex: 1; gap: 18px; justify-content: space-around; }
+.duo-hud__stats .stat,
+.duo-mine__body .stat { flex: 1 1 0; text-align: center; }
+.duo-mine__body .stat__value { font-size: 1.1rem; }
+/* In duello i due riquadri stanno vicini: sono una cosa sola da leggere. */
+.duo-hud:not([hidden]) { margin-bottom: 8px; }
+
 /* Griglia ombra: 81 quadratini pieni o vuoti */
 .shadow {
   display: grid;
@@ -620,6 +649,9 @@ body.is-duel #pause { display: none; }
   .duo-hud__body { flex-direction: column; align-items: stretch; }
   .shadow { align-self: center; }
   .duo-hud__stats { gap: 8px; }
+  /* Qui la griglia ombra sta sopra, non di fianco: niente spazio da compensare */
+  .duo-mine__body::before { display: none; }
+  .duo-mine__body .toolbar__stats { gap: 8px; }
 }
 
 /* Il codice della stanza: si legge ad alta voce al telefono, quindi grande,

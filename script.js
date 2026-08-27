@@ -16,7 +16,7 @@ const DIFFICULTY = {
 // e <link> in index.html: quel parametro è ciò che costringe telefoni e proxy a
 // riscaricare i file invece di riusare una copia vecchia in cache, e il numero a
 // schermo è ciò che permette di sapere quale build sta davvero girando.
-const APP_VERSION = '2026.08.27-2';
+const APP_VERSION = '2026.08.27-3';
 
 const MAX_MISTAKES = 3;
 const MAX_HINTS = 3;
@@ -401,6 +401,7 @@ const $board = document.getElementById('board');
 const $numpad = document.getElementById('numpad');
 const $timer = document.getElementById('timer');
 const $mistakes = document.getElementById('mistakes');
+const $filled = document.getElementById('filled');
 const $bestTime = document.getElementById('best-time');
 const $difficulty = document.getElementById('difficulty');
 const $newGame = document.getElementById('new-game');
@@ -587,7 +588,19 @@ function syncHud() {
   updateNotesButton();
   $hintsLeft.textContent = state.hintsLeft;
   updateMistakes();
+  updateFilled();
   updateBestTime();
+}
+
+// Quante celle sono piene. In duello è il confronto più immediato con
+// l'avversario, che lo stesso numero lo manda a ogni secondo.
+function updateFilled() {
+  if (!$filled) return;
+  let n = 0;
+  for (let r = 0; r < 9; r++)
+    for (let c = 0; c < 9; c++)
+      if (state.values[r][c] !== 0) n++;
+  $filled.innerHTML = `${n}<span class="stat__muted">/81</span>`;
 }
 
 function updateMistakes() {
@@ -689,6 +702,7 @@ function render() {
   }
 
   updateNumpadCounts();
+  updateFilled();
 }
 
 // Mostra quante cifre restano da piazzare per ciascun numero

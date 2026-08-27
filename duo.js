@@ -1289,7 +1289,26 @@
     S.convertToSolo();
   }
 
+  // I dati del giocatore, durante il duello, stanno sotto quelli
+  // dell'avversario e incolonnati come i suoi. Il nodo è **lo stesso** della
+  // barra in alto, spostato e poi rimesso a posto: due contatori separati
+  // sarebbero due cose da tenere d'accordo, e prima o poi una delle due mente.
+  function spostaMieiDati(nelDuello) {
+    const stats = document.querySelector('.toolbar__stats');
+    const barra = document.querySelector('.toolbar');
+    const slot = $('duo-mine-slot');
+    const cornice = $('duo-mine');
+    const celle = $('stat-filled');
+    if (!stats || !barra || !slot || !cornice) return;
+    // «Celle» esiste per il confronto con l'avversario: fuori dal duello la
+    // barra del single player resta quella di sempre.
+    if (celle) celle.hidden = !nelDuello;
+    cornice.hidden = !nelDuello;
+    (nelDuello ? slot : barra).appendChild(stats);
+  }
+
   function showHud(on) {
+    spostaMieiDati(on);
     if (el.hud) el.hud.hidden = !on;
     if (on && el.shadow && el.shadow.children.length === 0) {
       for (let i = 0; i < 81; i++) {

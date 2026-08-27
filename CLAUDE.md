@@ -162,8 +162,8 @@ Cosa coprono, in ordine di rapidità:
 | `test-scambio` | la cassetta postale del Worker, provata fuori dal browser su SQLite vero |
 | `test-relay-wait` | l'attesa dei candidati aspetta il ponte, e ne aspetta la raffica |
 | `test-trim` | molti candidati non gonfiano il codice, ma nessuna famiglia sparisce |
-| `test-solo` | non-regressione del single player |
-| `test-duel` | duello capo a capo con **WebRTC reale** tra due contesti |
+| `test-solo` | non-regressione del single player, barra dei dati compresa |
+| `test-duel` | duello capo a capo con **WebRTC reale** tra due contesti, e le due righe di dati incolonnate |
 | `test-duel-paths` | errori esauriti, connessione persa, vittoria a tavolino, protocollo incompatibile |
 | `test-connect` | schermata di collegamento, codice lungo, età dell'invito |
 | `test-flow` | il giro completo senza premere pulsanti |
@@ -189,6 +189,14 @@ Da qui **non si esce su Internet**: niente STUN, niente TURN, `github.io` e
 
 Il server statico avviato in background **muore tra un turno e l'altro**:
 `./test/run.sh` lo riavvia ogni volta.
+
+Un'ultima stranezza, per non farla riscoprire da capo: nella suite completa
+capita — un giro su tre o quattro — che una prova con WebRTC reale (`test-duel`,
+`test-flow`, `test-scambio-web`) scada sull'apertura del canale. Eseguita da
+sola passa sempre. Qui il collegamento può contare solo su candidati mDNS, e la
+loro risoluzione in questa sandbox è ballerina quando molte istanze di Chromium
+si sono già succedute. **Prima di dare la colpa all'ambiente, però, eseguire la
+prova isolata**: se fallisce anche così, è il codice.
 
 ## Stato e obiettivo aperto
 

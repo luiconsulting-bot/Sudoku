@@ -7,7 +7,7 @@
   <meta name="description" content="Gioca a Sudoku nel browser: quattro livelli di difficoltà, note, suggerimenti, timer e record personali." />
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Cg stroke='white' stroke-width='6' opacity='.9'%3E%3Cpath d='M36 12v76M64 12v76M12 36h76M12 64h76'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=2026.08.27-2" />
+  <link rel="stylesheet" href="style.css?v=2026.08.27-3" />
 </head>
 <body>
   <div class="app">
@@ -37,6 +37,13 @@
           <span class="stat__label">Tempo</span>
           <span id="timer" class="stat__value">00:00</span>
         </div>
+        <!-- Le celle riempite servono a confrontarsi con l'avversario, quindi
+             compaiono solo in duello: nel single player non c'erano e non è il
+             caso di cambiargli la barra. -->
+        <div class="stat" id="stat-filled" hidden>
+          <span class="stat__label">Celle</span>
+          <span id="filled" class="stat__value">0<span class="stat__muted">/81</span></span>
+        </div>
         <div class="stat">
           <span class="stat__label">Errori</span>
           <span id="mistakes" class="stat__value">0<span class="stat__muted">/3</span></span>
@@ -65,6 +72,16 @@
           <div class="stat"><span class="stat__label">Aiuti</span><span id="duo-opp-hints" class="stat__value">—</span></div>
         </div>
       </div>
+    </section>
+
+    <!-- I tuoi dati, durante il duello. Sono gli stessi della barra in alto —
+         il nodo viene spostato qui, non duplicato — perché stiano sotto quelli
+         dell'avversario e incolonnati come i suoi: sul telefono, mentre giochi,
+         la griglia ombra è fuori dal campo visivo e due righe vicine sono
+         l'unico modo di capire chi è avanti con un'occhiata. -->
+    <section id="duo-mine" class="duo-mine" hidden>
+      <span class="duo-mine__label">Tu</span>
+      <div id="duo-mine-slot" class="duo-mine__body"></div>
     </section>
 
     <div class="board-wrap">
@@ -372,9 +389,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=2026.08.27-2"></script>
-  <script src="net.js?v=2026.08.27-2"></script>
-  <script src="script.js?v=2026.08.27-2"></script>
-  <script src="duo.js?v=2026.08.27-2"></script>
+  <script src="config.js?v=2026.08.27-3"></script>
+  <script src="net.js?v=2026.08.27-3"></script>
+  <script src="script.js?v=2026.08.27-3"></script>
+  <script src="duo.js?v=2026.08.27-3"></script>
 </body>
 </html>

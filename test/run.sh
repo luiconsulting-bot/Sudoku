@@ -61,9 +61,16 @@ FALLITE=0
 TOTALE=0
 for p in $PROVE; do
   OUT=$(timeout 300 node "$p" 2>&1)
+  # L'esito va letto *subito*: qualunque altro comando lo sovrascrive, e prima
+  # $? finiva per riportare l'esito del `grep` qui sotto invece che quello della
+  # prova.
+  ESITO=$?
   N=$(printf '%s' "$OUT" | grep -c '^✓')
   TOTALE=$((TOTALE + N))
-  if [ $? -eq 0 ] && ! printf '%s' "$OUT" | grep -q 'Error\|✗'; then
+  # «Error» va cercato come lo scrive Node — `Error:` oppure `Error [ERR_...]` —
+  # e non come pezzo di parola: qui si scrive in italiano, e «errori» è un
+  # termine del gioco che compare di continuo nei referti delle prove.
+  if [ "$ESITO" -eq 0 ] && ! printf '%s' "$OUT" | grep -qE 'Error(:| \[)|✗'; then
     printf '  \033[32m✓\033[0m %-24s %s prove\n' "$(basename "$p" .mjs)" "$N"
   else
     printf '  \033[31m✗\033[0m %-24s %s prove\n' "$(basename "$p" .mjs)" "$N"

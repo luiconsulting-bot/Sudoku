@@ -125,6 +125,64 @@ const toast = await host.textContent('#toast');
 assert.ok(/pausa è disattivata/.test(toast), `avviso mostrato: ${toast}`);
 log('✓ pausa disattivata (con avviso) e comandi del solo nascosti');
 
+/* --- I tuoi dati stanno sotto quelli dell'avversario, incolonnati uguali --- */
+// Sul telefono, mentre si gioca, la griglia ombra dell'avversario è fuori dal
+// campo visivo: due righe vicine e incolonnate sono l'unico modo di capire chi
+// è avanti senza smettere di giocare.
+{
+  const disposizione = await guest.evaluate(() => {
+    const sinistre = (sel) => [...document.querySelectorAll(sel)]
+      .map((n) => Math.round(n.getBoundingClientRect().left));
+    const mine = document.querySelector('.toolbar__stats');
+    const hud = document.getElementById('duo-hud');
+    return {
+      corniceVisibile: !document.getElementById('duo-mine').hidden,
+      spostati: mine.parentElement.id === 'duo-mine-slot',
+      celleVisibili: !document.getElementById('stat-filled').hidden,
+      sottoAvversario: mine.getBoundingClientRect().top > hud.getBoundingClientRect().top,
+      sopraGriglia: mine.getBoundingClientRect().bottom
+        <= Math.ceil(document.getElementById('board').getBoundingClientRect().top),
+      colonneAvversario: sinistre('.duo-hud__stats .stat'),
+      colonneMie: sinistre('.duo-mine__body .stat'),
+      etichette: [...document.querySelectorAll('.duo-mine__body .stat__label')]
+        .map((n) => n.textContent),
+    };
+  });
+  assert.ok(disposizione.corniceVisibile, 'in duello compare la riga «Tu»');
+  assert.ok(disposizione.spostati, 'i dati sono spostati, non duplicati');
+  assert.ok(disposizione.celleVisibili, '«Celle» compare in duello');
+  assert.ok(disposizione.sottoAvversario, 'stanno sotto l’avversario');
+  assert.ok(disposizione.sopraGriglia, 'e sopra la griglia');
+  assert.deepEqual(disposizione.etichette, ['Tempo', 'Celle', 'Errori', 'Record']);
+  assert.deepEqual(disposizione.colonneMie, disposizione.colonneAvversario,
+    `le due righe sono incolonnate: ${JSON.stringify(disposizione)}`);
+  log(`✓ dati del giocatore sotto quelli dell'avversario, colonne allineate `
+    + `(${disposizione.colonneMie.join(', ')})`);
+}
+
+/* --- Il contatore delle celle segue la griglia in tempo reale --- */
+{
+  const prima = await guest.evaluate(() => ({
+    mostrato: document.getElementById('filled').textContent,
+    vere: window.Sudoku.getState().values.flat().filter((v) => v !== 0).length,
+  }));
+  assert.equal(prima.mostrato, `${prima.vere}/81`, 'il contatore parte giusto');
+
+  await guest.evaluate(() => {
+    const s = window.Sudoku.getState();
+    for (let r = 0; r < 9; r++)
+      for (let c = 0; c < 9; c++)
+        if (s.values[r][c] === 0) {
+          document.querySelectorAll('.cell')[r * 9 + c].click();
+          document.querySelectorAll('.numpad__btn')[s.solution[r][c] - 1].click();
+          return;
+        }
+  });
+  const dopo = await guest.textContent('#filled');
+  assert.equal(dopo, `${prima.vere + 1}/81`, `una cella in più: ${dopo}`);
+  log(`✓ celle riempite in tempo reale: ${prima.mostrato} → ${dopo}`);
+}
+
 /* --- L'avanzamento dell'avversario arriva --- */
 await guest.evaluate(() => {
   // il guest riempie qualche cella corretta

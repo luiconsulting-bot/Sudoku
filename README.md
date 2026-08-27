@@ -68,7 +68,10 @@ collegamento, senza ricominciare da capo.
 | Note | private, non vengono trasmesse |
 
 Dell'avversario vedi una **griglia ombra** — quali celle ha riempito, **non quali
-cifre** — più tempo, celle completate, errori e aiuti. Se la connessione cade puoi
+cifre** — più tempo, celle completate, errori e aiuti. Subito sotto, incolonnati
+allo stesso modo, ci sono i tuoi: tempo, celle, errori, record. Sul telefono la
+griglia ombra esce dallo schermo mentre giochi, e due righe vicine sono l'unico
+modo di capire chi è avanti senza smettere di giocare. Se la connessione cade puoi
 scegliere tra **vittoria a tavolino** e **finire il puzzle da solo**: una rete
 caduta non ti costa la partita.
 
