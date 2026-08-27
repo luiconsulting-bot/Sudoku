@@ -50,6 +50,7 @@ if [ $# -gt 0 ]; then
 else
   # Le prove pure prima: sono rapide e, se rompono, il resto non serve
   PROVE="test/test-logic.mjs test/test-relay-wait.mjs test/test-trim.mjs
+          test/test-scambio.mjs
           test/test-solo.mjs test/test-duel.mjs test/test-duel-paths.mjs
           test/test-connect.mjs test/test-flow.mjs test/test-diag.mjs
           test/test-turn.mjs test/test-turn-down.mjs test/test-messaggi.mjs"

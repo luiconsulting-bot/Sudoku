@@ -126,6 +126,72 @@ ALLOWED_ORIGIN = "https://luiconsulting-bot.github.io"
 TTL            = "3600"
 ```
 
+## 2-bis. Lo scambio automatico dei codici
+
+Questo passo è **facoltativo**: senza, il gioco funziona come prima e i due
+giocatori si scambiano invito e risposta a mano.
+
+Vale la pena farlo perché lo scambio a mano non è solo lento — copia, manda,
+incolla, genera, rimanda, reincolla: dai trenta ai novanta secondi — ma
+*fragile*. In quel tempo il varco che il router apre verso l'esterno può
+richiudersi, e la chat dove si scambiano i codici li accumula: incollare quello
+del tentativo precedente produce un collegamento che viene accettato e non si
+apre mai. Sono due guasti osservati sul campo, non ipotesi.
+
+Con lo scambio automatico: chi invita deposita l'invito e riceve un codice
+breve tipo `KLZ-56G`, chi risponde lo ritira e deposita la risposta, chi invita
+la raccoglie da sé. **Due secondi, e niente da copiare.**
+
+Serve un database D1. Si fa tutto dal pannello, senza terminale.
+
+### 1. Creare il database
+
+**Storage & Databases → D1 SQL Database → Create**. Chiamalo `sudoku-scambio`.
+Non serve creare tabelle: **il Worker se le crea da solo** al primo uso.
+
+### 2. Collegarlo al Worker
+
+Nella pagina del Worker `sudoku-turn`: **Settings → Bindings → Add binding →
+D1 database**.
+
+| Campo | Valore |
+|---|---|
+| Variable name | `SCAMBIO` — **esattamente così**, maiuscolo |
+| D1 database | `sudoku-scambio` |
+
+Il nome della variabile è ciò con cui il codice cerca il database: se non
+combacia, il Worker risponde «scambio non configurato» e lo dice in chiaro.
+
+### 3. Ripubblicare il Worker
+
+**Edit code**, cancella tutto e incolla di nuovo [`worker.js`](worker.js) — la
+versione aggiornata contiene anche lo scambio. Poi **Deploy**.
+
+### 4. Verificare, dal browser
+
+Apri:
+
+```
+https://sudoku-turn.tuonome.workers.dev/s
+```
+
+| Risposta | Cosa significa |
+|---|---|
+| `{"ok":true,"servizio":"scambio","stanze_attive":0}` | **fatto**, funziona |
+| `{"errore":"scambio non configurato"...}` | il collegamento D1 manca o si chiama diversamente da `SCAMBIO` |
+| la solita risposta con `iceServers` | hai incollato la versione vecchia di `worker.js`: rifai il passo 3 |
+
+Il resto dell'indirizzo continua a rispondere come prima: un Worker aggiornato
+serve anche i giochi che ancora non usano lo scambio.
+
+### Quanto consuma
+
+Un duello costa una decina di richieste e altrettante righe scritte. Il piano
+gratuito di D1 ne dà **100.000 al giorno** (e 5 milioni di letture, 5 GB di
+spazio): tre ordini di grandezza di margine. Le stanze durano **quindici
+minuti** e vengono cancellate appena la risposta è stata raccolta — il
+database resta vuoto quasi sempre.
+
 ## 3. Collegarlo al gioco
 
 Due modi.

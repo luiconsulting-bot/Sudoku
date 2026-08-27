@@ -18,3 +18,12 @@ TTL = "3600"
 
 # L'API Token (o "App Secret") NON va qui. Si imposta come segreto:
 #   npx wrangler secret put TURN_KEY_API_TOKEN
+
+# Il database dello scambio automatico dei codici. Contiene solo stanze che
+# durano un quarto d'ora: nessun dato di gioco, niente di personale.
+# Dal pannello: Storage & Databases → D1 → Create, poi il collegamento qui
+# sotto. La tabella se la crea il Worker da solo, al primo uso.
+[[d1_databases]]
+binding = "SCAMBIO"
+database_name = "sudoku-scambio"
+database_id = ""   # lo assegna Cloudflare quando crei il database
