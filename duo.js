@@ -100,6 +100,7 @@
     roomCode: $('duo-room-code'),
     roomLink: $('duo-room-link'),
     roomShare: $('duo-room-share'),
+    guestRoom: $('duo-guest-room'),
     roomCopy: $('duo-room-copy'),
     reportBox: $('duo-report-box'),
     report: $('duo-report'),
@@ -170,8 +171,8 @@
     if (el.reportBox) { el.reportBox.hidden = true; el.reportBox.open = false; }
     fermaScambio();
     mostraPassiManuali(true);
-    const campoRisposta = campoDi(el.answerOut);
-    if (campoRisposta) campoRisposta.hidden = false;
+    mostraPassiGuest(true);
+    if (el.guestRoom) el.guestRoom.hidden = true;
     refreshCurrentCode();
     showStep('menu');
     el.overlay.hidden = false;
@@ -258,6 +259,20 @@
     if (campoInvito) campoInvito.hidden = !on;
     if (campoRisposta) campoRisposta.hidden = !on;
     if (el.inviteAge) el.inviteAge.hidden = !on;
+  }
+
+  // I due passi di chi risponde — incolla il link, rimanda il codice — servono
+  // solo allo scambio a mano. Con la cassetta postale non c'è niente da
+  // incollare e niente da rimandare: lasciarli visibili significa mostrare due
+  // istruzioni da eseguire che non vanno eseguite, e nel primo campo finisce
+  // pure l'invito per intero, seicento caratteri che non riguardano nessuno.
+  function mostraPassiGuest(on) {
+    const campoInvito = campoDi(el.inviteIn);
+    const campoRisposta = campoDi(el.answerOut);
+    if (campoInvito) campoInvito.hidden = !on;
+    if (campoRisposta) campoRisposta.hidden = !on;
+    const casella = el.longG && el.longG.closest('.duo__check');
+    if (casella) casella.hidden = !on; // «codice lungo» riguarda solo i codici a mano
   }
 
   function fermaScambio() {
@@ -401,14 +416,23 @@
     showStep('guest');
     el.inviteIn.value = '';
     el.answerOut.value = '';
+    // Da qui in poi non c'è niente da fare a mano: via i due passi, e al loro
+    // posto di quale partita si tratta.
+    mostraPassiGuest(false);
+    if (el.guestRoom) { el.guestRoom.hidden = false; el.guestRoom.textContent = stanza; }
     setStatus(el.guestStatus, 'Ritiro l’invito…');
 
     let invito;
     try {
       invito = await Net.Scambio.ritira(stanza);
     } catch (err) {
+      // Senza invito non si va da nessuna parte: si riaprono i passi a mano,
+      // che restano una strada percorribile.
+      if (el.guestRoom) el.guestRoom.hidden = true;
+      mostraPassiGuest(true);
       setStatus(el.guestStatus, err.status === 404
-        ? 'Questo codice non vale più: fattene mandare uno nuovo.'
+        ? 'Questo codice non vale più: fattene mandare uno nuovo, oppure incolla '
+          + 'qui il link dell’invito.'
         : 'Non riesco a ritirare l’invito: ' + err.message, 'bad');
       return;
     }
@@ -419,10 +443,12 @@
 
     try {
       await Net.Scambio.deposita(stanza, el.answerOut.value);
-      const campo = campoDi(el.answerOut);
-      if (campo) campo.hidden = true;
       setStatus(el.guestStatus, 'Risposta mandata. Aspetta il via…', 'ok');
     } catch (err) {
+      // La risposta c'è ma non è partita: torna a galla il solo passo che
+      // serve, cioè rimandarla a mano.
+      const campo = campoDi(el.answerOut);
+      if (campo) campo.hidden = false;
       setStatus(el.guestStatus, 'Non riesco a mandare la risposta: rimandagli '
         + 'questo codice a mano.', 'bad');
     }
@@ -775,19 +801,16 @@
     if (duo.useLocal) {
       attach(Net.LocalTransport('local'));
       showStep('guest');
-      el.inviteIn.parentElement.hidden = true;
-      el.answerOut.parentElement.hidden = true;
+      mostraPassiGuest(false);
       setStatus(el.guestStatus, 'Mi collego all’altra scheda…');
       return;
     }
 
     showStep('guest');
-    el.inviteIn.parentElement.hidden = false;
-    el.answerOut.parentElement.hidden = false;
     if (prefilled) el.inviteIn.value = prefilled;
     el.answerOut.value = '';
-    const campoRisposta = campoDi(el.answerOut);
-    if (campoRisposta) campoRisposta.hidden = false;
+    mostraPassiGuest(true);
+    if (el.guestRoom) el.guestRoom.hidden = true;
 
     // Arrivando da un link l'invito c'è già: generare la risposta da soli evita
     // un passaggio manuale che non aggiunge nulla.

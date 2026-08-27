@@ -69,6 +69,21 @@ await B.p.waitForFunction(
 );
 log('✓ chi risponde ritira l’invito e deposita la risposta da sé');
 
+/* --- E non gli si chiede niente: i due passi a mano non ci sono --- */
+// Prima restavano visibili, e nel primo finiva pure l'invito per intero:
+// seicento caratteri e due istruzioni da eseguire che non vanno eseguite.
+{
+  const visibili = await B.p.evaluate(() => ({
+    incolla: !document.getElementById('duo-invite-in').closest('.duo__field').hidden,
+    rimanda: !document.getElementById('duo-answer-out').closest('.duo__field').hidden,
+    codice: document.getElementById('duo-guest-room').textContent.trim(),
+  }));
+  assert.equal(visibili.incolla, false, 'niente «incolla il link»');
+  assert.equal(visibili.rimanda, false, 'niente «rimanda questo codice»');
+  assert.match(visibili.codice, /^[A-Z0-9]{3}-[A-Z0-9]{3}$/, 'si vede di che partita si tratta');
+  log(`✓ a chi risponde non si chiede nulla: si vede solo la partita ${visibili.codice}`);
+}
+
 /* --- E il duello parte, senza che nessuno abbia copiato niente --- */
 await Promise.all([A.p, B.p].map((p) => p.waitForFunction(
   () => !document.getElementById('duo-count').hidden, null, { polling: 100, timeout: 40000 })));
@@ -89,6 +104,39 @@ log(`✓ duello in corso sullo stesso puzzle (seed ${semi[0]})`);
   }, `${MOCK}/s/${stanza}/r`);
   assert.equal(res.status, 404, 'la stanza è stata cancellata dopo la raccolta');
   log('✓ raccolta la risposta, la stanza non esiste più');
+}
+
+/* --- Se la risposta non parte, il passo a mano torna a galla --- */
+// La via di scampo deve restare percorribile: qui si rompe apposta il deposito
+// e si controlla che ricompaia il codice da rimandare, invece di lasciare chi
+// risponde davanti a una schermata senza appigli.
+{
+  const { ctx, p } = await scheda();
+  await p.goto(URL);
+  await p.waitForFunction(() => window.Sudoku && window.SudokuNet, null, { polling: 100 });
+  await p.click('#duo');
+  await p.click('#duo-create');
+  await p.waitForFunction(() => !document.getElementById('duo-room').hidden,
+    null, { polling: 100, timeout: 40000 });
+  const stanza2 = (await p.textContent('#duo-room-code')).trim();
+
+  const g = await scheda();
+  await g.p.goto(URL);
+  await g.p.waitForFunction(() => window.Sudoku && window.SudokuNet, null, { polling: 100 });
+  await g.p.evaluate(() => {
+    window.SudokuNet.Scambio.deposita = () => Promise.reject(new Error('finto guasto'));
+  });
+  await g.p.evaluate((codice) => { location.hash = '#j=' + codice; }, stanza2);
+  await g.p.waitForFunction(
+    () => /a mano/.test(document.getElementById('duo-guest-status').textContent),
+    null, { polling: 100, timeout: 40000 },
+  );
+  assert.ok(await g.p.evaluate(() => !document.getElementById('duo-answer-out')
+    .closest('.duo__field').hidden), 'il codice da rimandare è tornato visibile');
+  assert.ok((await g.p.inputValue('#duo-answer-out')).startsWith('S1'), 'e c’è davvero un codice');
+  log('✓ deposito impossibile: ricompare il codice da rimandare a mano');
+  await ctx.close();
+  await g.ctx.close();
 }
 
 /* --- Un codice inventato non lascia il giocatore senza spiegazione --- */

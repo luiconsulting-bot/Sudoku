@@ -7,7 +7,7 @@
   <meta name="description" content="Gioca a Sudoku nel browser: quattro livelli di difficoltà, note, suggerimenti, timer e record personali." />
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%234f46e5'/%3E%3Cg stroke='white' stroke-width='6' opacity='.9'%3E%3Cpath d='M36 12v76M64 12v76M12 36h76M12 64h76'/%3E%3C/g%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=2026.08.27-1" />
+  <link rel="stylesheet" href="style.css?v=2026.08.27-2" />
 </head>
 <body>
   <div class="app">
@@ -277,6 +277,12 @@
       <div id="duo-step-guest" hidden>
         <div class="modal__icon">🤝</div>
         <h2 class="modal__title">Unisciti alla partita</h2>
+
+        <!-- Con lo scambio automatico non c'è nessun passo da fare: i due campi
+             qui sotto restano nascosti, e si vede solo di quale partita si
+             tratta. Ricompaiono se il Worker non risponde. -->
+        <p id="duo-guest-room" class="duo__room" hidden>— — —</p>
+
         <div class="duo__field">
           <span class="field__label">1. Incolla il link, o scrivi il codice ricevuto</span>
           <textarea id="duo-invite-in" autocapitalize="off" autocorrect="off" spellcheck="false" class="duo__code" rows="3" placeholder="ABC-123   oppure   https://…#j=…"></textarea>
@@ -366,9 +372,9 @@
     </div>
   </div>
 
-  <script src="config.js?v=2026.08.27-1"></script>
-  <script src="net.js?v=2026.08.27-1"></script>
-  <script src="script.js?v=2026.08.27-1"></script>
-  <script src="duo.js?v=2026.08.27-1"></script>
+  <script src="config.js?v=2026.08.27-2"></script>
+  <script src="net.js?v=2026.08.27-2"></script>
+  <script src="script.js?v=2026.08.27-2"></script>
+  <script src="duo.js?v=2026.08.27-2"></script>
 </body>
 </html>
