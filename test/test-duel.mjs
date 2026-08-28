@@ -79,7 +79,9 @@ log('✓ il link di invito apre direttamente la schermata di ingresso');
 await guest.waitForFunction(
   () => document.getElementById('duo-invite-in').value.length > 10,
 );
-await guest.click('#duo-join-go');
+// Nessun pulsante da premere: incollare avvia da sé
+assert.equal(await guest.isVisible('#duo-join-go'), false,
+  'con un codice riconosciuto non c’è niente da premere');
 await guest.waitForFunction(
   () => document.getElementById('duo-answer-out').value.startsWith('S1'),
   null,

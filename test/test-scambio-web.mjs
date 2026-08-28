@@ -106,6 +106,46 @@ log(`✓ duello in corso sullo stesso puzzle (seed ${semi[0]})`);
   log('✓ raccolta la risposta, la stanza non esiste più');
 }
 
+/* --- Il codice scritto a mano dal menù: nessun pulsante da premere --- */
+// Il caso segnalato: chi riceve solo il codice non apre nessun link, entra da
+// «Unisciti a una partita» e lo scrive. Prima lì l'avvio automatico non
+// riconosceva il codice breve e bisognava premere un pulsante — la stessa cosa
+// chiedeva due gesti diversi a seconda di come era arrivata.
+{
+  const h = await scheda();
+  await h.p.goto(URL);
+  await h.p.waitForFunction(() => window.Sudoku && window.SudokuNet, null, { polling: 100 });
+  await h.p.click('#duo');
+  await h.p.click('#duo-create');
+  await h.p.waitForFunction(() => !document.getElementById('duo-room').hidden,
+    null, { polling: 100, timeout: 40000 });
+  const codice = (await h.p.textContent('#duo-room-code')).trim();
+
+  const g = await scheda();
+  await g.p.goto(URL);
+  await g.p.waitForFunction(() => window.Sudoku && window.SudokuNet, null, { polling: 100 });
+  await g.p.click('#duo');
+  await g.p.click('#duo-join');
+
+  // La schermata è nuda: una casella e basta
+  const nuda = await g.p.evaluate(() => ({
+    pulsante: !!document.getElementById('duo-join-go').offsetParent,
+    risposta: !!document.getElementById('duo-answer-out').closest('.duo__field').offsetParent,
+    casella: !!document.getElementById('duo-long-g').closest('.duo__check').offsetParent,
+  }));
+  assert.deepEqual(nuda, { pulsante: false, risposta: false, casella: false },
+    `niente da premere e nessun passo di troppo: ${JSON.stringify(nuda)}`);
+
+  await g.p.fill('#duo-invite-in', codice); // e nessun click
+  await g.p.waitForFunction(
+    () => /Risposta mandata/.test(document.getElementById('duo-guest-status').textContent),
+    null, { polling: 100, timeout: 40000 },
+  );
+  log(`✓ codice ${codice} scritto a mano dal menù: parte da solo, senza premere niente`);
+  await h.ctx.close();
+  await g.ctx.close();
+}
+
 /* --- Se la risposta non parte, il passo a mano torna a galla --- */
 // La via di scampo deve restare percorribile: qui si rompe apposta il deposito
 // e si controlla che ricompaia il codice da rimandare, invece di lasciare chi
@@ -147,7 +187,7 @@ log(`✓ duello in corso sullo stesso puzzle (seed ${semi[0]})`);
   await p.click('#duo');
   await p.click('#duo-join');
   await p.fill('#duo-invite-in', 'ZZZ-ZZZ');
-  await p.click('#duo-join-go');
+  // niente click: anche il codice breve deve avviare da sé
   await p.waitForFunction(
     () => /non vale più|non riesco/i.test(document.getElementById('duo-guest-status').textContent),
     null, { polling: 100, timeout: 20000 },

@@ -50,12 +50,19 @@ const hashAfter = await B.p.evaluate(() => location.hash);
 assert.equal(hashAfter, '', `URL ripulito dopo l’uso: "${hashAfter}"`);
 log('✓ guest: il frammento è stato consumato e poi ripulito');
 
-// Premere «Genera risposta» per abitudine non deve invalidare la risposta già mandata
-await B.p.click('#duo-join-go');
+// Non c'è nessun pulsante da premere: l'invito riconosciuto avvia da sé.
+assert.equal(await B.p.isVisible('#duo-join-go'), false,
+  'nessun pulsante: incollare un codice riconosciuto fa tutto');
+
+// Il rischio si è spostato: un secondo evento di incollaggio sullo stesso
+// invito non deve rigenerare la risposta che l'avversario ha già ricevuto.
+await B.p.evaluate(() => {
+  document.getElementById('duo-invite-in').dispatchEvent(new Event('input', { bubbles: true }));
+});
 await B.p.waitForTimeout(500);
 assert.equal(await B.p.inputValue('#duo-answer-out'), answer, 'la risposta non è stata rigenerata');
 assert.ok(/già pronta/.test(await B.p.textContent('#duo-guest-status')), 'lo dice chiaramente');
-log('✓ guest: ripremere il pulsante non invalida la risposta già inviata');
+log('✓ guest: reincollare lo stesso invito non invalida la risposta già inviata');
 
 /* --- Host incolla la risposta con il prefisso rovinato dalla tastiera --- */
 const mangled = '  s1' + answer.slice(2) + ' ';  // "S1:" → "s1:", più spazi

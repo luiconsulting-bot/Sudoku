@@ -133,12 +133,24 @@ const waited = await host.evaluate(async () => {
 assert.ok(waited > 5000, `attesa dei candidati estesa: ${waited} ms (prima si fermava a 3000)`);
 log(`✓ senza indirizzo pubblico si attende fino in fondo: ${waited} ms`);
 
-/* --- Il guest ha la sua casella per il codice lungo --- */
+/* --- Il guest ha la sua casella per il codice lungo, quando serve --- */
+// La casella riguarda il codice da rimandare a mano: compare insieme a quello,
+// non prima. Con lo scambio automatico quel codice non esiste proprio, e una
+// casella che non governa niente è un passo in più da capire.
 await host.click('#duo-host-back');
 await host.click('#duo-join');
 await host.waitForFunction(() => !document.getElementById('duo-step-guest').hidden, null, { polling: 100 });
-assert.equal(await host.isVisible('#duo-long-g'), true, 'il guest vede la casella del codice lungo');
-log('✓ anche chi si unisce ha la casella del codice lungo (prima non c’era)');
+assert.equal(await host.isVisible('#duo-long-g'), false,
+  'nessuna casella finché non c’è un codice da rimandare');
+assert.equal(await host.isVisible('#duo-join-go'), false,
+  'e nessun pulsante: incollare avvia da sé');
+
+await host.fill('#duo-invite-in', compact);
+await host.waitForFunction(() => document.getElementById('duo-answer-out').value.length > 20,
+  null, { polling: 100, timeout: 30000 });
+assert.equal(await host.isVisible('#duo-long-g'), true,
+  'con il codice pronto la casella c’è');
+log('✓ chi si unisce ha la casella del codice lungo, e solo quando governa qualcosa');
 
 if (errors.length) {
   console.error('\n✗ errori rilevati:\n' + errors.join('\n'));

@@ -82,7 +82,8 @@ caduta non ti costa la partita.
 Se il ponte è configurato (vedi `turn-worker/`), invito e risposta se li passano
 i due dispositivi da soli: chi invita riceve un **codice breve** tipo `KLZ-56G`
 da dettare o da mandare come link, chi lo apre è già in partita. Non c'è niente
-da rimandare indietro.
+da rimandare indietro — e se il codice ti arriva a voce, lo scrivi in «Unisciti
+a una partita» e parte da solo: non c'è nessun pulsante da premere.
 
 Senza il ponte — o se non risponde — ricompaiono i due passi di sempre: mandi il
 link, ti fai rimandare il codice di risposta, lo incolli. Funziona, ma richiede

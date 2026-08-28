@@ -47,6 +47,8 @@
     ageId: null,          // aggiorna l'età dell'invito mostrata all'host
     inviteAt: 0,
     stanza: null,         // codice della cassetta postale, se lo scambio è attivo
+    stanzaOspite: null,   // la stanza da cui si è entrati, per chi risponde
+    entrando: false,      // ingresso in corso (evita doppioni dagli eventi)
     ritirato: false,      // l'avversario ha già ritirato l'invito
     pollId: null,         // sondaggio della risposta
     rinfrescoId: null,    // sostituzione periodica dell'invito non ancora ritirato
@@ -266,13 +268,32 @@
   // incollare e niente da rimandare: lasciarli visibili significa mostrare due
   // istruzioni da eseguire che non vanno eseguite, e nel primo campo finisce
   // pure l'invito per intero, seicento caratteri che non riguardano nessuno.
-  function mostraPassiGuest(on) {
-    const campoInvito = campoDi(el.inviteIn);
-    const campoRisposta = campoDi(el.answerOut);
-    if (campoInvito) campoInvito.hidden = !on;
-    if (campoRisposta) campoRisposta.hidden = !on;
+  function mostraPassoInvito(on) {
+    const campo = campoDi(el.inviteIn);
+    if (campo) campo.hidden = !on;
+  }
+
+  // Il codice da rimandare esiste solo nello scambio a mano: finché non ce n'è
+  // uno, mostrarne il campo vuoto è chiedere di eseguire un passo che non c'è.
+  function mostraPassoRisposta(on) {
+    const campo = campoDi(el.answerOut);
+    if (campo) campo.hidden = !on;
     const casella = el.longG && el.longG.closest('.duo__check');
     if (casella) casella.hidden = !on; // «codice lungo» riguarda solo i codici a mano
+  }
+
+  // Il pulsante compare solo quando c'è qualcosa da premere: incollare un
+  // codice — di stanza o di gioco — avvia tutto da sé. Resta la via d'uscita
+  // per quando quello che è stato incollato non si riconosce, che altrimenti
+  // lascerebbe fermi davanti a una casella e nient'altro.
+  function mostraPulsanteIngresso(on) {
+    if (el.joinGo) el.joinGo.hidden = !on;
+  }
+
+  function mostraPassiGuest(on) {
+    mostraPassoInvito(on);
+    mostraPassoRisposta(false);
+    mostraPulsanteIngresso(false);
   }
 
   function fermaScambio() {
@@ -409,6 +430,19 @@
   // Chi risponde, arrivando da un codice di stanza: ritira l'invito, prepara la
   // risposta e la deposita. Nessun codice da rimandare a mano.
   async function entraDaStanza(stanza) {
+    // Incollare produce più di un evento, e correggere il testo dopo essere
+    // entrati ne produce altri: la stessa stanza non si ritira due volte.
+    if (duo.entrando) return;
+    if (duo.stanzaOspite === stanza && duo.phase === 'connecting') return;
+    duo.entrando = true;
+    try {
+      await entraDaStanzaOra(stanza);
+    } finally {
+      duo.entrando = false;
+    }
+  }
+
+  async function entraDaStanzaOra(stanza) {
     duo.role = 'guest';
     duo.name = slots ? slots.getValue() : S.loadLastName();
     S.saveLastName(duo.name);
@@ -418,6 +452,7 @@
     el.answerOut.value = '';
     // Da qui in poi non c'è niente da fare a mano: via i due passi, e al loro
     // posto di quale partita si tratta.
+    duo.stanzaOspite = stanza; // la risposta viaggia da sé: nessun passo a mano
     mostraPassiGuest(false);
     if (el.guestRoom) { el.guestRoom.hidden = false; el.guestRoom.textContent = stanza; }
     setStatus(el.guestStatus, 'Ritiro l’invito…');
@@ -428,8 +463,10 @@
     } catch (err) {
       // Senza invito non si va da nessuna parte: si riaprono i passi a mano,
       // che restano una strada percorribile.
+      duo.stanzaOspite = null; // fallito: si deve poter riprovare
       if (el.guestRoom) el.guestRoom.hidden = true;
-      mostraPassiGuest(true);
+      mostraPassoInvito(true);
+      mostraPulsanteIngresso(true);
       setStatus(el.guestStatus, err.status === 404
         ? 'Questo codice non vale più: fattene mandare uno nuovo, oppure incolla '
           + 'qui il link dell’invito.'
@@ -447,8 +484,7 @@
     } catch (err) {
       // La risposta c'è ma non è partita: torna a galla il solo passo che
       // serve, cioè rimandarla a mano.
-      const campo = campoDi(el.answerOut);
-      if (campo) campo.hidden = false;
+      mostraPassoRisposta(true);
       setStatus(el.guestStatus, 'Non riesco a mandare la risposta: rimandagli '
         + 'questo codice a mano.', 'bad');
     }
@@ -809,6 +845,7 @@
     showStep('guest');
     if (prefilled) el.inviteIn.value = prefilled;
     el.answerOut.value = '';
+    duo.stanzaOspite = null;
     mostraPassiGuest(true);
     if (el.guestRoom) el.guestRoom.hidden = true;
 
@@ -819,7 +856,8 @@
       generateAnswer();
       return;
     }
-    setStatus(el.guestStatus, 'Incolla il link o il codice che ti ha mandato l’avversario.');
+    setStatus(el.guestStatus, 'Incolla il link o scrivi il codice che ti ha mandato '
+      + 'l’avversario: parte da solo, non c’è niente da premere.');
   }
 
   async function generateAnswer() {
@@ -856,6 +894,8 @@
         else if (type === 'srflx') setStatus(el.guestStatus, 'Indirizzo pubblico trovato, cerco il ponte…');
       }, ice.bridge === 'on');
       renderAnswer();
+      // Ora il codice da rimandare c'è: da qui il passo ha un senso.
+      if (!duo.stanzaOspite) mostraPassoRisposta(true);
       renderNet(el.guestNet);
       renderReport(false);
       // Invito servito: solo ora si può ripulire l'URL. Toglierlo prima significa
@@ -1412,8 +1452,18 @@
 
   // Su un telefono ogni tocco in più è attrito: appena nel campo compare un
   // codice valido si procede da soli, senza aspettare la pressione del pulsante.
+  // Incollare avvia da sé, e deve valere per **tutte e due** le forme: il codice
+  // di gioco lungo e il codice breve della stanza. Prima solo il primo faceva
+  // partire qualcosa, e per il secondo bisognava premere un pulsante — la stessa
+  // cosa richiedeva due gesti diversi a seconda di come era arrivata.
   el.inviteIn.addEventListener('input', () => {
-    if (Net.extractCode(el.inviteIn.value)) generateAnswer();
+    const testo = el.inviteIn.value;
+    const stanza = !duo.useLocal && Net.Scambio.configurato()
+      ? Net.Scambio.extractRoom(testo) : null;
+    if (stanza) { mostraPulsanteIngresso(false); entraDaStanza(stanza); return; }
+    if (Net.extractCode(testo)) { mostraPulsanteIngresso(false); generateAnswer(); return; }
+    // Non si riconosce niente: il pulsante torna a essere l'unica via d'uscita.
+    mostraPulsanteIngresso(testo.trim().length > 0);
   });
 
   el.answerIn.addEventListener('input', () => {
