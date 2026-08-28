@@ -213,12 +213,6 @@ body {
 }
 
 .actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-/* `hidden` deve vincere sempre. Una classe che dichiara un `display` — `.btn`
-   con il suo `inline-flex`, per dire — ha più peso della regola del browser per
-   `[hidden]`, e l'elemento resta visibile pur essendo marcato nascosto. È già
-   costato un giro di prove: un pulsante che non doveva esserci restava lì. */
-[hidden] { display: none !important; }
-
 .btn {
   border: none;
   border-radius: 12px;
@@ -463,6 +457,7 @@ body {
   padding: 12px 16px;
   margin-bottom: 14px;
 }
+.duo-hud[hidden] { display: none; }
 .duo-hud__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .duo-hud__label {
   font-size: 0.7rem;
@@ -488,6 +483,7 @@ body {
   padding: 8px 16px 10px;
   margin-bottom: 14px;
 }
+.duo-mine[hidden] { display: none; }
 .duo-mine__label {
   font-size: 0.7rem;
   text-transform: uppercase;

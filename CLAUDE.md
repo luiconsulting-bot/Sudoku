@@ -119,12 +119,6 @@ il Worker conferma che nessuno ha ancora ritirato (`rinfrescaInvito` in
 Le stanze durano quindici minuti e spariscono appena la risposta è stata
 raccolta. Il Worker non sa cosa contengono i codici.
 
-Attenzione a una trappola dell'interfaccia, già costata un giro: **`hidden` da
-solo non basta**. Una classe che dichiara un `display` — `.btn` con il suo
-`inline-flex`, `.duo__check` con `flex` — pesa più della regola del browser per
-`[hidden]`, e l'elemento resta visibile pur essendo marcato nascosto. In
-`style.css` c'è ora una regola globale che lo impedisce.
-
 ### Il referto tecnico
 
 Da qui l'attraversamento NAT vero non si prova, quindi un fallimento sul campo
