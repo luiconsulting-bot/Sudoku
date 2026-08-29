@@ -51,6 +51,13 @@
     pollId: null,         // sondaggio della risposta
     rinfrescoId: null,    // sostituzione periodica dell'invito non ancora ritirato
     rinfreschi: 0,
+    stanzaOspite: null,   // la stanza da cui si è entrati, per chi risponde
+    stanzaUsata: null,    // l'ultima stanza usata: il referto deve poterla dire
+                          // anche a scambio concluso, che è quando lo si legge
+    raccolta: false,      // la risposta è stata raccolta dalla cassetta
+    sondaggi: 0,          // quante volte si è chiesto «c'è la risposta?»
+    depositata: null,     // esito del deposito della risposta, per chi risponde
+    scambioNote: [],      // cosa è successo alla cassetta postale, in ordine
     answering: false,     // risposta in preparazione (evita doppioni da input+click)
     answeredFor: null,    // payload dell'invito per cui la risposta è già pronta
     connecting: false,
@@ -170,6 +177,11 @@
     setStatus(el.guestStatus, '');
     if (el.reportBox) { el.reportBox.hidden = true; el.reportBox.open = false; }
     fermaScambio();
+    duo.scambioNote = [];
+    duo.depositata = null;
+    duo.stanzaOspite = null;
+    duo.stanzaUsata = null;
+    duo.raccolta = false;
     mostraPassiManuali(true);
     mostraPassiGuest(true);
     if (el.guestRoom) el.guestRoom.hidden = true;
@@ -250,6 +262,18 @@
 
   const campoDi = (node) => (node && node.closest ? node.closest('.duo__field') : null);
 
+  // Il diario dello scambio. I due referti di ieri raccontavano metà storia
+  // ciascuno e nessuno dei due diceva **di quale stanza** stesse parlando: con
+  // quel dato mancante, «la risposta non è arrivata» e «la risposta è finita in
+  // un'altra stanza» sono indistinguibili — e sono guasti diversi.
+  const NOTE_MAX = 12;
+
+  function notaScambio(testo) {
+    const da = duo.inviteAt ? (Date.now() - duo.inviteAt) / 1000 : 0;
+    duo.scambioNote.push(`${da.toFixed(1)}s ${testo}`);
+    if (duo.scambioNote.length > NOTE_MAX) duo.scambioNote.shift();
+  }
+
   // I due passi manuali: si nascondono quando la cassetta postale funziona, e
   // ricompaiono tali e quali se non funziona. Non è una modalità a parte —
   // è la stessa schermata con un passaggio in meno.
@@ -276,6 +300,7 @@
   }
 
   function fermaScambio() {
+    if (duo.stanza) notaScambio(`stanza ${duo.stanza} abbandonata`);
     clearTimeout(duo.pollId);
     clearTimeout(duo.rinfrescoId);
     duo.pollId = null;
@@ -283,6 +308,7 @@
     duo.stanza = null;
     duo.ritirato = false;
     duo.rinfreschi = 0;
+    duo.sondaggi = 0;
     if (el.room) el.room.hidden = true;
   }
 
@@ -293,8 +319,12 @@
     if (!Net.Scambio.configurato()) { mostraPassiManuali(true); return false; }
     try {
       duo.stanza = await Net.Scambio.apri(duo.transport.describe(el.long.checked));
+      duo.stanzaUsata = duo.stanza;
+      duo.raccolta = false;
+      notaScambio(`aperta stanza ${duo.stanza}`);
     } catch (err) {
       duo.stanza = null;
+      notaScambio('apertura stanza fallita: ' + (err.message || err));
       mostraPassiManuali(true);
       S.showToast('Scambio automatico non disponibile: si fa a mano');
       return false;
@@ -326,9 +356,12 @@
     clearTimeout(duo.pollId);
     duo.pollId = setTimeout(async () => {
       if (!duo.stanza || duo.phase !== 'connecting') return;
+      duo.sondaggi += 1;
       try {
         const esito = await Net.Scambio.raccogli(duo.stanza);
         if (esito.risposta) {
+          duo.raccolta = true;
+          notaScambio(`risposta raccolta da ${duo.stanza}`);
           clearTimeout(duo.rinfrescoId);
           duo.stanza = null;
           await usaRisposta(esito.risposta);
@@ -336,12 +369,14 @@
         }
         if (esito.ritirato && !duo.ritirato) {
           duo.ritirato = true;
+          notaScambio(`invito ritirato dall’avversario (${duo.stanza})`);
           clearTimeout(duo.rinfrescoId);
           setStatus(el.hostStatus, 'Invito aperto dall’avversario, aspetto la risposta…');
         }
       } catch (err) {
         if (err.status === 404) {
           // La stanza è scaduta: l'invito che ha in mano non vale più.
+          notaScambio(`stanza ${duo.stanza} sparita (404) dopo ${duo.sondaggi} sondaggi`);
           fermaScambio();
           mostraPassiManuali(true);
           setStatus(el.hostStatus, 'Il codice è scaduto: premi «Genera un nuovo '
@@ -393,8 +428,10 @@
       if (esito.ritirato) {
         nuovo.close();
         duo.ritirato = true;
+        notaScambio('rinfresco scartato: l’invito era già stato ritirato');
         return;
       }
+      notaScambio(`invito rinfrescato (${duo.rinfreschi}º)`);
       attach(nuovo);
       renderInvite();
       renderNet(el.hostNet);
@@ -416,6 +453,11 @@
     showStep('guest');
     el.inviteIn.value = '';
     el.answerOut.value = '';
+    duo.stanzaOspite = stanza;
+    duo.stanzaUsata = stanza;
+    duo.inviteAt = duo.inviteAt || Date.now();
+    duo.depositata = null;
+    notaScambio(`entro nella stanza ${stanza}`);
     // Da qui in poi non c'è niente da fare a mano: via i due passi, e al loro
     // posto di quale partita si tratta.
     mostraPassiGuest(false);
@@ -425,7 +467,9 @@
     let invito;
     try {
       invito = await Net.Scambio.ritira(stanza);
+      notaScambio(`invito ritirato da ${stanza}`);
     } catch (err) {
+      notaScambio(`ritiro fallito da ${stanza}: ${err.message || err}`);
       // Senza invito non si va da nessuna parte: si riaprono i passi a mano,
       // che restano una strada percorribile.
       if (el.guestRoom) el.guestRoom.hidden = true;
@@ -443,10 +487,14 @@
 
     try {
       await Net.Scambio.deposita(stanza, el.answerOut.value);
+      duo.depositata = true;
+      notaScambio(`risposta depositata in ${stanza}`);
       setStatus(el.guestStatus, 'Risposta mandata. Aspetta il via…', 'ok');
     } catch (err) {
       // La risposta c'è ma non è partita: torna a galla il solo passo che
       // serve, cioè rimandarla a mano.
+      duo.depositata = false;
+      notaScambio(`deposito fallito in ${stanza}: ${err.message || err}`);
       const campo = campoDi(el.answerOut);
       if (campo) campo.hidden = false;
       setStatus(el.guestStatus, 'Non riesco a mandare la risposta: rimandagli '
@@ -585,10 +633,29 @@
     } catch (err) {
       righe = ['referto non leggibile: ' + (err.message || err)];
     }
+    // La riga che mancava: **quale stanza**. Due referti che non la nominano non
+    // permettono di distinguere «la risposta non è partita» da «la risposta è
+    // finita in un'altra stanza», che hanno rimedi opposti.
+    const stanza = duo.stanza || duo.stanzaOspite || duo.stanzaUsata;
+    const scambio = [];
+    if (stanza) scambio.push(`stanza: ${stanza}`);
+    else if (Net.Scambio.configurato()) scambio.push('stanza: nessuna (scambio a mano)');
+    if (duo.role !== 'guest' && stanza) {
+      // Raccogliere la risposta implica che l'invito era stato ritirato, anche
+      // se nessun sondaggio ha fatto in tempo a vederlo.
+      scambio.push(`ritirato dall’avversario: ${duo.ritirato || duo.raccolta ? 'sì' : 'no'}`);
+      scambio.push(`sondaggi: ${duo.sondaggi} · rinfreschi: ${duo.rinfreschi}`);
+    }
+    if (duo.role === 'guest' && duo.depositata !== null) {
+      scambio.push(`risposta depositata: ${duo.depositata ? 'sì' : 'NO'}`);
+    }
+
     el.report.value = [
       `Sudoku ${S.APP_VERSION} · ${duo.role === 'guest' ? 'chi risponde' : 'chi invita'}`,
       `ponte: ${statoPonte()}`,
+      ...scambio,
       ...righe,
+      ...(duo.scambioNote.length ? ['scambio: ' + duo.scambioNote.join(' → ')] : []),
     ].join('\n');
     if (apri) el.reportBox.open = true;
   }

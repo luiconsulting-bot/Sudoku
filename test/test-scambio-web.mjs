@@ -96,6 +96,26 @@ const semi = await Promise.all([A.p, B.p].map((p) => p.evaluate(() => window.Sud
 assert.equal(semi[0], semi[1], 'stesso puzzle su tutti e due');
 log(`✓ duello in corso sullo stesso puzzle (seed ${semi[0]})`);
 
+/* --- I due referti nominano la stessa stanza --- */
+// Senza questo dato, «la risposta non è partita» e «la risposta è finita in
+// un'altra stanza» sono lo stesso referto, e hanno rimedi opposti. È già
+// costato un giro di prove sul campo.
+{
+  const referto = async (p) => {
+    await p.evaluate(() => { const b = document.getElementById('duo-report-box'); if (b) b.open = true; });
+    await p.waitForTimeout(400);
+    return p.inputValue('#duo-report');
+  };
+  const rA = await referto(A.p);
+  const rB = await referto(B.p);
+  assert.ok(rA.includes(`stanza: ${stanza}`), `il referto di chi invita nomina la stanza:\n${rA}`);
+  assert.ok(rB.includes(`stanza: ${stanza}`), `e anche quello di chi risponde:\n${rB}`);
+  assert.ok(/ritirato dall’avversario: sì/.test(rA), `chi invita sa che l’invito è stato ritirato:\n${rA}`);
+  assert.ok(/risposta depositata: sì/.test(rB), `chi risponde sa di aver depositato:\n${rB}`);
+  assert.ok(/scambio: .*aperta stanza/.test(rA), `e il diario racconta i passaggi:\n${rA}`);
+  log(`✓ i due referti nominano la stessa stanza (${stanza}) e raccontano lo scambio`);
+}
+
 /* --- La stanza sparisce appena servita: non resta niente in giro --- */
 {
   const res = await A.p.evaluate(async (u) => {
